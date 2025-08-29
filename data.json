@@ -1,0 +1,568 @@
+{
+    "HealthDataType.STEPS": [
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 10
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T12:00:05.191",
+            "dateTo": "2025-08-26T12:01:05.192"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 10
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T12:37:39.478",
+            "dateTo": "2025-08-26T12:38:39.479"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 10
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T16:50:36.399",
+            "dateTo": "2025-08-26T16:51:36.400"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 9
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T17:19:58.831",
+            "dateTo": "2025-08-26T17:20:58.832"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 26
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T18:25:43.411",
+            "dateTo": "2025-08-26T18:26:43.412"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 69
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T18:26:43.411",
+            "dateTo": "2025-08-26T18:28:50.068"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 79
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T18:29:56.206",
+            "dateTo": "2025-08-26T18:32:34.207"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 17
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T18:32:34.206",
+            "dateTo": "2025-08-26T18:32:44.232"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 10
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T18:36:55.706",
+            "dateTo": "2025-08-26T18:37:55.707"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 2
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T18:37:55.706",
+            "dateTo": "2025-08-26T18:37:58.636"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 51
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T19:31:24.161",
+            "dateTo": "2025-08-26T19:33:06.162"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 18
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T19:33:06.161",
+            "dateTo": "2025-08-26T19:33:16.191"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 103
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T19:33:16.190",
+            "dateTo": "2025-08-26T19:34:06.250"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 51
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T19:34:06.249",
+            "dateTo": "2025-08-26T19:34:31.328"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 10
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T19:34:31.327",
+            "dateTo": "2025-08-26T19:35:29.428"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 121
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T19:35:29.427",
+            "dateTo": "2025-08-26T19:36:29.519"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 140
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T19:36:29.518",
+            "dateTo": "2025-08-26T19:37:31.807"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 37
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T19:37:31.806",
+            "dateTo": "2025-08-26T19:37:51.308"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 10
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T19:43:53.247",
+            "dateTo": "2025-08-26T19:44:53.248"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 2
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T19:44:53.247",
+            "dateTo": "2025-08-26T19:45:33.741"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 10
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T19:53:35.632",
+            "dateTo": "2025-08-26T19:54:35.633"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 1
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T19:54:35.632",
+            "dateTo": "2025-08-26T19:54:38.155"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 17
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T19:56:49.863",
+            "dateTo": "2025-08-26T19:57:49.864"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 18
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T19:57:49.863",
+            "dateTo": "2025-08-26T19:58:15.817"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 19
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T19:58:15.816",
+            "dateTo": "2025-08-26T19:58:38.415"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 12
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T20:12:40.102",
+            "dateTo": "2025-08-26T20:13:40.103"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 17
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T22:44:27.063",
+            "dateTo": "2025-08-26T22:45:27.064"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 16
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T23:06:19.602",
+            "dateTo": "2025-08-26T23:07:19.603"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 21
+            },
+            "unit": "COUNT",
+            "dateFrom": "2025-08-26T23:54:54.738",
+            "dateTo": "2025-08-26T23:55:54.739"
+        }
+    ],
+    "HealthDataType.HEART_RATE": [
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 70
+            },
+            "unit": "BEATS_PER_MINUTE",
+            "dateFrom": "2025-08-26T21:57:00.000",
+            "dateTo": "2025-08-26T21:57:00.000"
+        }
+    ],
+    "HealthDataType.SLEEP_ASLEEP": [],
+    "HealthDataType.ACTIVE_ENERGY_BURNED": [],
+    "HealthDataType.WEIGHT": [
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 73.02831268310547
+            },
+            "unit": "KILOGRAM",
+            "dateFrom": "2025-08-26T21:02:00.000",
+            "dateTo": "2025-08-26T21:02:00.000"
+        }
+    ],
+    "HealthDataType.HEIGHT": [
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 1.7000000476837158
+            },
+            "unit": "METER",
+            "dateFrom": "2025-08-26T21:02:54.012",
+            "dateTo": "2025-08-26T21:02:54.012"
+        }
+    ],
+    "HealthDataType.LEAN_BODY_MASS": [],
+    "HealthDataType.DISTANCE_DELTA": [
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 16.318796157836914
+            },
+            "unit": "METER",
+            "dateFrom": "2025-08-26T18:25:43.411",
+            "dateTo": "2025-08-26T18:26:43.412"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 43.30757522583008
+            },
+            "unit": "METER",
+            "dateFrom": "2025-08-26T18:26:43.411",
+            "dateTo": "2025-08-26T18:28:50.068"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 49.58403396606445
+            },
+            "unit": "METER",
+            "dateFrom": "2025-08-26T18:29:56.206",
+            "dateTo": "2025-08-26T18:32:34.207"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 11.5734281539917
+            },
+            "unit": "METER",
+            "dateFrom": "2025-08-26T18:32:34.206",
+            "dateTo": "2025-08-26T18:32:44.232"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 1.2552919387817383
+            },
+            "unit": "METER",
+            "dateFrom": "2025-08-26T18:37:55.706",
+            "dateTo": "2025-08-26T18:37:58.636"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 32.00994873046875
+            },
+            "unit": "METER",
+            "dateFrom": "2025-08-26T19:31:24.161",
+            "dateTo": "2025-08-26T19:33:06.162"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 12.574956893920898
+            },
+            "unit": "METER",
+            "dateFrom": "2025-08-26T19:33:06.161",
+            "dateTo": "2025-08-26T19:33:16.191"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 76.8177490234375
+            },
+            "unit": "METER",
+            "dateFrom": "2025-08-26T19:33:16.190",
+            "dateTo": "2025-08-26T19:34:06.250"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 37.817134857177734
+            },
+            "unit": "METER",
+            "dateFrom": "2025-08-26T19:34:06.249",
+            "dateTo": "2025-08-26T19:34:31.328"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 89.2865219116211
+            },
+            "unit": "METER",
+            "dateFrom": "2025-08-26T19:35:29.427",
+            "dateTo": "2025-08-26T19:36:29.519"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 109.19367218017578
+            },
+            "unit": "METER",
+            "dateFrom": "2025-08-26T19:36:29.518",
+            "dateTo": "2025-08-26T19:37:31.807"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 26.5292911529541
+            },
+            "unit": "METER",
+            "dateFrom": "2025-08-26T19:37:31.806",
+            "dateTo": "2025-08-26T19:37:51.308"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 0.6276460289955139
+            },
+            "unit": "METER",
+            "dateFrom": "2025-08-26T19:54:35.632",
+            "dateTo": "2025-08-26T19:54:38.155"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 11.297628402709961
+            },
+            "unit": "METER",
+            "dateFrom": "2025-08-26T19:57:49.863",
+            "dateTo": "2025-08-26T19:58:15.817"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 11.925274848937988
+            },
+            "unit": "METER",
+            "dateFrom": "2025-08-26T19:58:15.816",
+            "dateTo": "2025-08-26T19:58:38.415"
+        }
+    ],
+    "HealthDataType.SLEEP_AWAKE": [],
+    "HealthDataType.BODY_FAT_PERCENTAGE": [
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 25
+            },
+            "unit": "PERCENT",
+            "dateFrom": "2025-08-26T21:57:00.000",
+            "dateTo": "2025-08-26T21:57:00.000"
+        }
+    ],
+    "HealthDataType.BODY_MASS_INDEX": [
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 25.269310929525133
+            },
+            "unit": "NO_UNIT",
+            "dateFrom": "2025-08-26T21:02:00.000",
+            "dateTo": "2025-08-26T21:02:00.000"
+        }
+    ],
+    "HealthDataType.BLOOD_PRESSURE_SYSTOLIC": [
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 120
+            },
+            "unit": "MILLIMETER_OF_MERCURY",
+            "dateFrom": "2025-08-26T21:02:00.000",
+            "dateTo": "2025-08-26T21:02:00.000"
+        }
+    ],
+    "HealthDataType.BLOOD_PRESSURE_DIASTOLIC": [
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 80
+            },
+            "unit": "MILLIMETER_OF_MERCURY",
+            "dateFrom": "2025-08-26T21:02:00.000",
+            "dateTo": "2025-08-26T21:02:00.000"
+        }
+    ],
+    "HealthDataType.BLOOD_OXYGEN": [
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 100
+            },
+            "unit": "PERCENT",
+            "dateFrom": "2025-08-26T21:58:00.000",
+            "dateTo": "2025-08-26T21:58:00.000"
+        }
+    ],
+    "HealthDataType.RESTING_HEART_RATE": [],
+    "HealthDataType.HEART_RATE_VARIABILITY_RMSSD": [],
+    "HealthDataType.TOTAL_CALORIES_BURNED": [
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 1272.9105224609375
+            },
+            "unit": "KILOCALORIE",
+            "dateFrom": "2025-08-26T00:00:00.000",
+            "dateTo": "2025-08-26T19:31:24.162"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 1.3191481828689575
+            },
+            "unit": "KILOCALORIE",
+            "dateFrom": "2025-08-26T19:31:24.161",
+            "dateTo": "2025-08-26T19:32:37.000"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 24.45281219482422
+            },
+            "unit": "KILOCALORIE",
+            "dateFrom": "2025-08-26T19:32:36.999",
+            "dateTo": "2025-08-26T19:37:54.217"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 280.1702575683594
+            },
+            "unit": "KILOCALORIE",
+            "dateFrom": "2025-08-26T19:37:54.216",
+            "dateTo": "2025-08-26T23:55:43.907"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 6.5501813888549805
+            },
+            "unit": "KILOCALORIE",
+            "dateFrom": "2025-08-26T23:55:43.906",
+            "dateTo": "2025-08-26T23:57:08.880"
+        },
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 3.099139928817749
+            },
+            "unit": "KILOCALORIE",
+            "dateFrom": "2025-08-26T23:57:08.879",
+            "dateTo": "2025-08-27T00:00:00.000"
+        }
+    ],
+    "HealthDataType.WORKOUT": [],
+    "HealthDataType.SLEEP_DEEP": [],
+    "HealthDataType.SLEEP_LIGHT": [],
+    "HealthDataType.SLEEP_REM": [],
+    "HealthDataType.SLEEP_SESSION": [
+        {
+            "value": {
+                "__type": "NumericHealthValue",
+                "numericValue": 480
+            },
+            "unit": "MINUTE",
+            "dateFrom": "2025-08-26T13:40:00.000",
+            "dateTo": "2025-08-26T21:40:00.000"
+        }
+    ],
+    "HealthDataType.SLEEP_UNKNOWN": []
+}
