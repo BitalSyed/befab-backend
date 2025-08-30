@@ -105,10 +105,24 @@ router.get("/users/search", async (req, res) => {
         { email: { $regex: query, $options: "i" } },
       ],
     })
-      .select("_id firstName lastName username email") // return only safe fields
+      .select("_id firstName lastName username email")
       .limit(20);
 
-    return res.json(users);
+    // For each user, find a chat that includes both req.user._id and user._id
+    const usersWithChatId = await Promise.all(
+      users.map(async (user) => {
+        const chat = await Chat.findOne({
+          participants: { $all: [req.user._id, user._id] },
+        }).select("_id");
+
+        return {
+          ...user.toObject(),
+          chatId: chat?._id || null, // add chatId field, null if no chat exists
+        };
+      })
+    );
+
+    return res.json(usersWithChatId);
   } catch (err) {
     console.error("Error searching users:", err);
     return res.status(500).json({ error: "Server Error" });
