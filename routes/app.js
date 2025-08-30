@@ -1,20 +1,22 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const { requireAuth } = require('../middleware/auth');
-const multer = require('multer');
-const path = require('path');
+const { requireAuth } = require("../middleware/auth");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 
-const Newsletter = require('../models/Newsletter');
-const Video = require('../models/Video');
-const Group = require('../models/Group');
-const Competition = require('../models/Competition');
-const Goal = require('../models/Goal');
-const DayNutrition = require('../models/Nutrition');
-const Fitness = require('../models/Fitness');
-const { Chat, Message } = require('../models/Message');
-const Event = require('../models/events');
-const User = require('../models/User');
-const Food = require('../models/foods');
+const Newsletter = require("../models/Newsletter");
+const Video = require("../models/Video");
+const Group = require("../models/Group");
+const Competition = require("../models/Competition");
+const Goal = require("../models/Goal");
+const DayNutrition = require("../models/Nutrition");
+const Fitness = require("../models/Fitness");
+const { Chat, Message } = require("../models/Message");
+const Event = require("../models/events");
+const User = require("../models/User");
+const Food = require("../models/foods");
+const Notifications = require("../models/Notifications");
 
 // All app (user-facing) routes require auth
 router.use(requireAuth);
@@ -23,17 +25,30 @@ router.use(requireAuth);
  * HOME content feed selections & notifications will be client-driven.
  * Below are concrete feature endpoints.
  */
+router.get('/notifications', async (req, res) => {
+  try {
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const notifications = await Notifications.find({ user: req.user._id })
+      .sort({ createdAt: -1 }); // newest first
+
+    res.json(notifications);
+  } catch (err) {
+    console.error('Error fetching notifications:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 router.get("/get", async (req, res) => {
-
   const email = req.user.email;
-  
+
   // Find user by email
   const u = await User.findOne({ email: email });
   if (!u) {
     return res.status(401).json({ error: "User Not Found" });
   }
-
 
   // await createSystemLog(
   //   user._id,
@@ -101,60 +116,92 @@ router.get("/users/search", async (req, res) => {
 });
 
 /** NEWSLETTERS (read/list, like, comment, save) */
-router.get('/newsletters', async (_req, res) => {
-  const list = await Newsletter.find({ status: 'published' }).sort({ createdAt: -1 }).populate("author").select("-password");
-  console.log(list)
+router.get("/newsletters", async (_req, res) => {
+  const list = await Newsletter.find({ status: "published" })
+    .sort({ createdAt: -1 })
+    .populate("author")
+    .select("-password");
+  console.log(list);
   res.json(list);
 });
 
-router.get('/newsletters/:id', async (req, res) => {
-  console.log(req.params)
-  const list = await Newsletter.findOne({ _id: req.params.id, status: 'published' }).sort({ createdAt: -1 });
+router.get("/newsletters/:id", async (req, res) => {
+  console.log(req.params);
+  const list = await Newsletter.findOne({
+    _id: req.params.id,
+    status: "published",
+  }).sort({ createdAt: -1 });
   res.json(list);
 });
 
-router.post('/newsletters/:id/like', async (req, res) => {
+router.post("/newsletters/:id/like", async (req, res) => {
   const nl = await Newsletter.findById(req.params.id);
-  if (!nl) return res.status(404).json({ error: 'Not found' });
-  const idx = nl.likes.findIndex(u => u.toString() === req.user._id.toString());
-  if (idx >= 0) nl.likes.splice(idx, 1); else nl.likes.push(req.user._id);
+  if (!nl) return res.status(404).json({ error: "Not found" });
+  const idx = nl.likes.findIndex(
+    (u) => u.toString() === req.user._id.toString()
+  );
+  if (idx >= 0) nl.likes.splice(idx, 1);
+  else nl.likes.push(req.user._id);
   await nl.save();
   res.json({ likes: nl.likes.length });
 });
 
-router.post('/newsletters/:id/comments', async (req, res) => {
+router.post("/newsletters/:id/comments", async (req, res) => {
   const { content, parent } = req.body;
-  if (!content) return res.status(400).json({ error: 'Missing content' });
+  if (!content) return res.status(400).json({ error: "Missing content" });
   const nl = await Newsletter.findById(req.params.id);
-  if (!nl) return res.status(404).json({ error: 'Not found' });
+  if (!nl) return res.status(404).json({ error: "Not found" });
   nl.comments.push({ author: req.user._id, content, parent: parent || null });
   await nl.save();
   res.status(201).json(nl.comments[nl.comments.length - 1]);
 });
 
-router.post('/newsletters/:id/save', async (req, res) => {
+router.post("/newsletters/:id/save", async (req, res) => {
   const nl = await Newsletter.findById(req.params.id);
-  if (!nl) return res.status(404).json({ error: 'Not found' });
-  const idx = nl.savedBy.findIndex(u => u.toString() === req.user._id.toString());
-  if (idx >= 0) nl.savedBy.splice(idx, 1); else nl.savedBy.push(req.user._id);
+  if (!nl) return res.status(404).json({ error: "Not found" });
+  const idx = nl.savedBy.findIndex(
+    (u) => u.toString() === req.user._id.toString()
+  );
+  if (idx >= 0) nl.savedBy.splice(idx, 1);
+  else nl.savedBy.push(req.user._id);
   await nl.save();
   res.json({ saved: idx < 0 });
 });
 
 /** VIDEOS (grid feed, post by users to Students tab; admin-only for other tabs) */
-router.get('/videos', async (req, res) => {
+router.get("/videos", async (req, res) => {
   const { category } = req.query;
-  const filter = { status: 'published' };
+  const filter = { status: "published" };
   if (category) filter.category = category;
-  const vids = await Video.find(filter).sort({ createdAt: -1 }).populate('uploader');
+  const vids = await Video.find(filter)
+    .sort({ createdAt: -1 })
+    .populate("uploader");
   res.json(vids);
 });
 
-router.get('/videos/:id', async (req, res) => {
+router.get("/videos/liked/get", async (req, res) => {
+  try {
+    const v = await Video.find({ likes: req.user._id })
+      .sort({ createdAt: -1 })
+      .distinct("_id"); // only return distinct IDs
+
+    if (!v || v.length === 0) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    res.json(v.map((id) => id.toString())); // return as array of strings
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.get("/videos/:id", async (req, res) => {
   const { category } = req.query;
-  const filter = { status: 'published', _id: req.params.id };
+  const filter = { status: "published", _id: req.params.id };
   if (category) filter.category = category;
-  const vids = await Video.findOne(filter).sort({ createdAt: -1 }).populate('uploader');
+  const vids = await Video.findOne(filter)
+    .sort({ createdAt: -1 })
+    .populate("uploader");
   res.json(vids);
 });
 
@@ -186,7 +233,8 @@ router.post(
       }
 
       // Enforce category rules
-      const isStudents = category === "Students";
+      const isStudents =
+        category === "BeFAB NCCU" || category === "Mentor Meetup";
       if (isStudents && req.user.role !== "admin") {
         // console.log(isStudents, category)
         return res
@@ -195,10 +243,10 @@ router.post(
       }
 
       const videoFile = req.files.url[0];
-      
+
       const videoPath = `/videos/${videoFile.filename}`;
       const thumbnailPath = req.files.thumbnailUrl
-        ? req.files.thumbnailUrl[0].path
+        ? `/videos/${req.files.thumbnailUrl[0].filename}`
         : null;
 
       const v = await Video.create({
@@ -221,10 +269,10 @@ router.post(
   }
 );
 
-router.post('/videos/:id/like', async (req, res) => {
+router.post("/videos/:id/like", async (req, res) => {
   try {
     const v = await Video.findById(req.params.id);
-    if (!v) return res.status(404).json({ error: 'Not found' });
+    if (!v) return res.status(404).json({ error: "Not found" });
 
     const userId = req.user._id;
     let update;
@@ -249,38 +297,39 @@ router.post('/videos/:id/like', async (req, res) => {
   }
 });
 
-router.post('/videos/:id/comments', async (req, res) => {
+router.post("/videos/:id/comments", async (req, res) => {
   const { content } = req.body;
-  if (!content) return res.status(400).json({ error: 'Missing content' });
+  if (!content) return res.status(400).json({ error: "Missing content" });
   const v = await Video.findById(req.params.id);
-  if (!v) return res.status(404).json({ error: 'Not found' });
+  if (!v) return res.status(404).json({ error: "Not found" });
   v.comments.push({ author: req.user._id, content });
   await v.save();
   res.status(201).json(v.comments[v.comments.length - 1]);
 });
 
 /** GROUPS (join, leave, request to join if private; posts/threads & comments) */
-router.get('/groups', async (req, res) => {
+router.get("/groups", async (req, res) => {
   try {
-    const groups = await Group.find()
-      .select('name description imageUrl bannerUrl visibility members joinRequests');
+    const groups = await Group.find().select(
+      "name description imageUrl bannerUrl visibility members joinRequests"
+    );
 
     const userId = req.user?._id?.toString(); // ensure string for comparison
 
-    const formatted = groups.map(group => {
+    const formatted = groups.map((group) => {
       let state = "JOIN"; // default
 
       if (userId) {
-        if (group.members.some(m => m.toString() === userId)) {
+        if (group.members.some((m) => m.toString() === userId)) {
           state = "LEAVE";
-        } else if (group.joinRequests?.some(r => r.toString() === userId)) {
+        } else if (group.joinRequests?.some((r) => r.toString() === userId)) {
           state = "REQUESTED";
         }
       }
 
       return {
         ...group.toObject(),
-        state
+        state,
       };
     });
 
@@ -291,13 +340,14 @@ router.get('/groups', async (req, res) => {
   }
 });
 
-router.get('/groups/:id', async (req, res) => {
+router.get("/groups/:id", async (req, res) => {
   try {
-    const group = await Group.findOne({ _id: req.params.id })
-      .select('name description imageUrl bannerUrl visibility members joinRequests posts');
+    const group = await Group.findOne({ _id: req.params.id }).select(
+      "name description imageUrl bannerUrl visibility members joinRequests posts"
+    );
 
     if (!group) {
-      return res.status(404).json({ error: 'Group not found' });
+      return res.status(404).json({ error: "Group not found" });
     }
 
     const userId = req.user?._id?.toString(); // ensure string for comparison
@@ -305,9 +355,9 @@ router.get('/groups/:id', async (req, res) => {
     let state = "JOIN"; // default
 
     if (userId) {
-      if (group.members.some(m => m.toString() === userId)) {
+      if (group.members.some((m) => m.toString() === userId)) {
         state = "LEAVE";
-      } else if (group.joinRequests?.some(r => r.toString() === userId)) {
+      } else if (group.joinRequests?.some((r) => r.toString() === userId)) {
         state = "REQUESTED";
       }
     }
@@ -315,7 +365,7 @@ router.get('/groups/:id', async (req, res) => {
     // create final response object
     const formatted = {
       ...group.toObject(),
-      state
+      state,
     };
 
     res.json(formatted);
@@ -325,15 +375,18 @@ router.get('/groups/:id', async (req, res) => {
   }
 });
 
-router.post('/groups/:id/join', async (req, res) => {
+router.post("/groups/:id/join", async (req, res) => {
   const g = await Group.findById(req.params.id);
-  if (!g) return res.status(404).json({ error: 'Not found' });
+  if (!g) return res.status(404).json({ error: "Not found" });
 
-  const alreadyMember = g.members.some(m => m.toString() === req.user._id.toString());
+  const alreadyMember = g.members.some(
+    (m) => m.toString() === req.user._id.toString()
+  );
   if (alreadyMember) return res.json({ joined: true });
 
-  if (g.visibility === 'private') {
-    if (!g.joinRequests.some(r => r.toString() === req.user._id.toString())) g.joinRequests.push(req.user._id);
+  if (g.visibility === "private") {
+    if (!g.joinRequests.some((r) => r.toString() === req.user._id.toString()))
+      g.joinRequests.push(req.user._id);
     await g.save();
     return res.json({ requested: true }); // admin must approve per spec :contentReference[oaicite:28]{index=28}
   } else {
@@ -343,19 +396,19 @@ router.post('/groups/:id/join', async (req, res) => {
   }
 });
 
-router.post('/groups/:id/leave', async (req, res) => {
+router.post("/groups/:id/leave", async (req, res) => {
   try {
     const g = await Group.findById(req.params.id);
-    if (!g) return res.status(404).json({ error: 'Not found' });
+    if (!g) return res.status(404).json({ error: "Not found" });
 
     const userId = req.user._id.toString();
 
     // remove from members
-    g.members = g.members.filter(m => m.toString() !== userId);
+    g.members = g.members.filter((m) => m.toString() !== userId);
 
     // remove from joinRequests if present
     if (g.joinRequests && g.joinRequests.length > 0) {
-      g.joinRequests = g.joinRequests.filter(r => r.toString() !== userId);
+      g.joinRequests = g.joinRequests.filter((r) => r.toString() !== userId);
     }
 
     await g.save();
@@ -363,104 +416,393 @@ router.post('/groups/:id/leave', async (req, res) => {
     res.json({ joined: false, requested: false });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-router.post('/groups/:id/posts', async (req, res) => {
+router.post("/groups/:id/posts", async (req, res) => {
   const { content, images } = req.body;
   const g = await Group.findById(req.params.id);
-  if (!g) return res.status(404).json({ error: 'Not found' });
-  const isMember = g.members.some(m => m.toString() === req.user._id.toString());
-  if (!isMember) return res.status(403).json({ error: 'Join the group first' });
+  if (!g) return res.status(404).json({ error: "Not found" });
+  const isMember = g.members.some(
+    (m) => m.toString() === req.user._id.toString()
+  );
+  if (!isMember) return res.status(403).json({ error: "Join the group first" });
   g.posts.push({ author: req.user._id, content, images });
   await g.save();
   res.status(201).json(g.posts[g.posts.length - 1]);
 });
 
 /** COMPETITIONS (list, join/leave, my progress, leaderboard) */
-router.get('/competitions', async (req, res) => {
+router.get("/competitions", async (req, res) => {
   try {
     const now = new Date();
     const competitions = await Competition.find({
-      end: { $gte: new Date(now.getFullYear() - 1, 0, 1) }
-    }).sort({ start: -1 });
+      end: { $gte: new Date(now.getFullYear() - 1, 0, 1) },
+      status: { $nin: ["draft", "completed", "paused"] },
+    }).populate("participants.user");
 
-    // Map each competition and check if user joined
-    const list = competitions.map(comp => {
+    // Load user health JSON file
+    const dataPath = path.join(__dirname, `../${req.user._id}.json`);
+    let healthData = {};
+    if (fs.existsSync(dataPath)) {
+      healthData = JSON.parse(fs.readFileSync(dataPath, "utf8"));
+    }
+
+    // Nutrition DB data
+    const nutritionData = await DayNutrition.find({ user: req.user._id });
+
+    const list = [];
+
+    for (let comp of competitions) {
       const joined = comp.participants.some(
-        p => p.user.toString() === req.user._id.toString()
+        (p) => p.user._id.toString() === req.user._id.toString()
+      );
+
+      if (joined) {
+        const participant = comp.participants.find(
+          (p) => p.user._id.toString() === req.user._id.toString()
+        );
+
+        let score = 0;
+        let progress = 0;
+
+        switch (comp.category) {
+          case "Fitness":
+            const steps = (healthData["HealthDataType.STEPS"] || []).reduce(
+              (a, b) => a + (b.value?.numericValue || 0),
+              0
+            );
+            const distance = (
+              healthData["HealthDataType.DISTANCE_DELTA"] || []
+            ).reduce((a, b) => a + (b.value?.numericValue || 0), 0);
+            score = steps + distance; // simple scoring
+            progress = steps; // could normalize based on goal
+            break;
+
+          case "Nutrition":
+            let water = nutritionData.reduce(
+              (a, b) => a + (b.waterIntake_oz || 0),
+              0
+            );
+            let calories = nutritionData.reduce((a, b) => {
+              return (
+                a +
+                Object.values(b.meals || {})
+                  .flat()
+                  .reduce((sum, item) => sum + (item.calories || 0), 0)
+              );
+            }, 0);
+            score = water + calories / 10;
+            progress = water;
+            break;
+
+          case "Wellness":
+            const sleep = (
+              healthData["HealthDataType.SLEEP_ASLEEP"] || []
+            ).reduce((a, b) => a + (b.value?.numericValue || 0), 0);
+            const hr =
+              (healthData["HealthDataType.HEART_RATE"] || [])[0]?.value
+                ?.numericValue || 0;
+            score = sleep + (70 - Math.abs(70 - hr)); // closer HR to 70 = better
+            progress = sleep;
+            break;
+
+          case "Strength":
+            // Example placeholder: use weight data
+            const weight =
+              (healthData["HealthDataType.WEIGHT"] || []).slice(-1)[0]?.value
+                ?.numericValue || 0;
+            score = weight * 2;
+            progress = weight;
+            break;
+
+          case "Cardio":
+            const runDist = (
+              healthData["HealthDataType.DISTANCE_DELTA"] || []
+            ).reduce((a, b) => a + (b.value?.numericValue || 0), 0);
+            score = runDist;
+            progress = runDist;
+            break;
+
+          case "Team":
+            // Example: group steps total
+            const teamSteps = comp.participants.reduce(
+              (acc, p) => acc + (p.score || 0),
+              0
+            );
+            score = teamSteps;
+            progress = teamSteps;
+            break;
+        }
+
+        participant.score = score;
+        participant.progress = progress;
+        participant.lastUpdated = new Date();
+        await comp.save();
+
+        // Update leaderboard (sort by score)
+        comp.leaderboard = comp.participants
+          .map((p) => ({ user: p.user._id, score: p.score }))
+          .sort((a, b) => b.score - a.score)
+          .map((p, i) => ({ ...p, rank: i + 1 }));
+        await comp.save();
+      }
+
+      list.push({ ...comp.toObject(), joined });
+    }
+    res.json({ list });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.get("/competitions/get", async (req, res) => {
+  try {
+    const now = new Date();
+
+    const competitions = await Competition.find({
+      end: { $gte: new Date(now.getFullYear() - 1, 0, 1) },
+    }).populate("participants.user");
+
+    const getUserId = (p) =>
+      typeof p.user === "object" && p.user._id
+        ? p.user._id.toString()
+        : p.user.toString();
+
+    const list = competitions.map((comp) => {
+      const joined = comp.participants.some(
+        (p) => getUserId(p) === req.user._id.toString()
       );
       return { ...comp.toObject(), joined };
     });
 
-    res.json({ list });
+    // --- user-specific stats ---
+    let totalWins = 0;
+    let totalProgressPct = 0; // relative %
+    let progressCount = 0;
+    let rankSum = 0;
+    let rankCount = 0;
+
+    for (const comp of competitions) {
+      const participant = comp.participants.find(
+        (p) => getUserId(p) === req.user._id.toString()
+      );
+
+      if (participant) {
+        // Sort leaderboard by score
+        const sorted = [...comp.participants].sort(
+          (a, b) => (b.score || 0) - (a.score || 0)
+        );
+
+        const rank =
+          sorted.findIndex(
+            (p) => getUserId(p) === req.user._id.toString()
+          ) + 1;
+
+        // ✅ Win = rank 1 when competition completed
+        if (comp.status === "completed" && rank === 1) {
+          totalWins++;
+        }
+
+        // ✅ For active competitions, normalize progress against leader
+        if (!['draft', 'upcoming', 'completed', 'paused'].includes(comp.status)) {
+          const leader = sorted[0];
+          const leaderProgress = leader?.progress || 1; // avoid div/0
+          const pct = ((participant.progress || 0) / leaderProgress) * 100;
+          totalProgressPct += Math.min(pct, 100);
+          progressCount++;
+        }
+
+        rankSum += rank;
+        rankCount++;
+      }
+    }
+
+    const avgProgress = progressCount > 0 ? totalProgressPct / progressCount : 0;
+    const avgRank = rankCount > 0 ? rankSum / rankCount : null;
+
+    res.json({
+      competitions: list,
+      stats: {
+        totalWins,
+        avgProgress, // % compared to leader
+        avgRank,
+      },
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-router.post('/competitions/:id/join', async (req, res) => {
+router.post("/competitions/:id/join", async (req, res) => {
   const c = await Competition.findById(req.params.id);
-  if (!c) return res.status(404).json({ error: 'Not found' });
-  const exists = c.participants.find(p => p.user.toString() === req.user._id.toString());
+  if (!c) return res.status(404).json({ error: "Not found" });
+  const exists = c.participants.find(
+    (p) => p.user.toString() === req.user._id.toString()
+  );
   if (exists) return res.json({ joined: true });
   c.participants.push({ user: req.user._id, progress: 0, score: 0 });
   await c.save();
   res.json({ joined: true });
 });
 
-router.get('/competitions/:id/leaderboard', async (req, res) => {
-  const c = await Competition.findById(req.params.id).populate('leaderboard.user', 'username');
-  if (!c) return res.status(404).json({ error: 'Not found' });
+router.get("/competitions/:id/leaderboard", async (req, res) => {
+  const c = await Competition.findById(req.params.id).populate(
+    "leaderboard.user",
+    "username"
+  );
+  if (!c) return res.status(404).json({ error: "Not found" });
   res.json(c.leaderboard);
 });
 
+router.post("/data", async (req, res) => {
+  const filePath = path.join(__dirname, `../${req.user._id}.json`);
+  const incomingData = req.body;
+
+  if (!incomingData) {
+    return res.status(400).json({ message: "No data provided" });
+  }
+
+  // Convert JSON to string
+  const dataToWrite = JSON.stringify(incomingData) + "\n";
+
+  // Append to txt file
+  fs.writeFileSync(filePath, dataToWrite, (err) => {
+    if (err) {
+      console.error("❌ Error writing file:", err);
+      return res.status(500).json({ message: "Error saving data" });
+    }
+
+    console.log("✅ Data saved:", incomingData);
+    res.status(200).json({ message: "Data saved successfully" });
+  });
+});
+
 /** GOALS (create, list, update progress) */
-router.get('/goals', async (req, res) => {
-  const list = await Goal.find({ user: req.user._id }).sort({ createdAt: -1 });
-  res.json(list);
-});
-
-router.get('/goals/current', async (req, res) => {
-  const list = await Goal.findOne({ user: req.user._id, status: 'active' }).sort({ createdAt: -1 });
-  res.json(list);
-});
-
-router.post('/goals', async (req, res) => {
+router.get("/goals", async (req, res) => {
   try {
-    const { name, durationDays, milestones, trackProgress } = req.body;
-    if (!name || !durationDays) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    // 1. Load or create data.json
+    const dataPath = path.join(__dirname, `../${req.user._id}.json`);
+    if (!fs.existsSync(dataPath)) {
+      fs.writeFileSync(dataPath, JSON.stringify({}, null, 2), "utf-8");
+    }
+    const healthData = JSON.parse(fs.readFileSync(dataPath, "utf-8"));
+
+    // 2. Get all user goals
+    const goals = await Goal.find({ user: req.user._id }).sort({
+      createdAt: -1,
+    });
+
+    // 3. Get today's nutrition document
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const nutrition = await DayNutrition.findOne({
+      user: req.user._id,
+      date: { $gte: today, $lt: new Date(today.getTime() + 86400000) },
+    });
+
+    // 4. Helper: sum healthData
+    const sumHealth = (key) =>
+      (healthData[key] || []).reduce(
+        (acc, entry) => acc + (entry.value?.numericValue || 0),
+        0
+      );
+
+    // 5. Prepare nutrition totals
+    let waterTotal = 0;
+    let caloriesTakenTotal = 0;
+
+    if (nutrition) {
+      waterTotal = nutrition.waterIntake_oz || 0;
+
+      const allMeals = [
+        ...nutrition.meals.breakfast,
+        ...nutrition.meals.lunch,
+        ...nutrition.meals.dinner,
+        ...nutrition.meals.snacks,
+        ...nutrition.meals.other,
+      ];
+
+      caloriesTakenTotal = allMeals.reduce((acc, meal) => {
+        const qty = meal.quantity || 1;
+        return acc + (meal.calories || 0) * qty;
+      }, 0);
+    }
+
+    // 6. Map over goals and update progress
+    const updatedGoals = goals.map((goal) => {
+      let progress = 0;
+
+      switch (goal.category) {
+        case "Steps":
+          progress = sumHealth("HealthDataType.STEPS");
+          break;
+        case "Distance":
+          progress = sumHealth("HealthDataType.DISTANCE_DELTA");
+          break;
+        case "Calories Burned":
+          progress = sumHealth("HealthDataType.TOTAL_CALORIES_BURNED");
+          break;
+        case "Calories Taken":
+          progress = caloriesTakenTotal;
+          break;
+        case "Water Intake":
+          progress = waterTotal;
+          break;
+      }
+
+      const percent = Math.min(100, (progress / goal.milestones) * 100);
+
+      return {
+        ...goal.toObject(),
+        progressValue: progress,
+        progressPercent: percent,
+      };
+    });
+
+    // 7. Send updated list
+    res.status(200).json(updatedGoals);
+  } catch (err) {
+    console.error("Error fetching goals:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.get("/goals/current", async (req, res) => {
+  const list = await Goal.findOne({
+    user: req.user._id,
+    category: req.query.q,
+  }).sort({ createdAt: -1 });
+
+  res.json(list);
+});
+
+router.post("/goals", async (req, res) => {
+  try {
+    const { name, durationDays, milestones, category } = req.body;
+    if (!name || !durationDays || !milestones || !category) {
+      return res.status(400).json({ error: "Missing required fields" });
     }
 
     // Get last goal for this user (latest createdAt)
-    const lastGoal = await Goal.findOne({ user: req.user._id })
-      .sort({ createdAt: -1 });
+    const lastGoal = await Goal.findOne({
+      user: req.user._id,
+      category: category,
+      status: { $in: ["expiired", "completed"] },
+    }).sort({ createdAt: -1 });
 
-    let status = "active";
-    let startDate = new Date();
-
-    if (lastGoal) {
-      const lastEnd = new Date(lastGoal.createdAt);
-      lastEnd.setDate(lastEnd.getDate() + lastGoal.durationDays);
-
-      if (new Date() < lastEnd) {
-        // Last goal still running → make this one upcoming
-        status = "upcoming";
-        startDate = lastEnd; // start right after the last ends
-      }
-    }
+    if (lastGoal)
+      return res.status(400).json({ error: "An uncompleted goal exist" });
 
     const goal = await Goal.create({
       user: req.user._id,
       name,
+      category,
       durationDays,
       milestones,
-      trackProgress,
-      status,
-      startDate
     });
 
     res.status(201).json(goal);
@@ -470,36 +812,47 @@ router.post('/goals', async (req, res) => {
   }
 });
 
-router.patch('/goals/:id/progress', async (req, res) => {
+router.patch("/goals/:id/progress", async (req, res) => {
   const { progressValue, progressPercent, status } = req.body;
   const g = await Goal.findOneAndUpdate(
     { _id: req.params.id, user: req.user._id },
     { progressValue, progressPercent, status },
     { new: true }
   );
-  if (!g) return res.status(404).json({ error: 'Not found' });
+  if (!g) return res.status(404).json({ error: "Not found" });
   res.json(g);
 });
 
 /** NUTRITION (meal logging, hydration tracker) */
-router.get('/nutrition/:date', async (req, res) => {
-  console.log(req.params.date)
+router.get("/nutrition/:date", async (req, res) => {
+  console.log(req.params.date);
   const date = new Date(req.params.date);
   const doc = await DayNutrition.findOne({ user: req.user._id, date });
-  res.json(doc || { user: req.user._id, date, meals: { breakfast: [], lunch: [], dinner: [], snacks: [], other: [] }, waterIntake_oz: 0 });
+  res.json(
+    doc || {
+      user: req.user._id,
+      date,
+      meals: { breakfast: [], lunch: [], dinner: [], snacks: [], other: [] },
+      waterIntake_oz: 0,
+    }
+  );
 });
 
-router.get('/nutrition/get/foods', async (req, res) => {
+router.get("/nutrition/get/foods", async (req, res) => {
   const doc = await Food.find({});
   res.json(doc);
 });
 
-router.post('/nutrition/:date/meal', async (req, res) => {
+router.post("/nutrition/:date/meal", async (req, res) => {
   try {
     const { bucket, item } = req.body;
 
-    if (!['breakfast', 'lunch', 'dinner', 'snacks', 'other'].includes(bucket.toLowerCase())) {
-      return res.status(400).json({ error: 'Invalid bucket' });
+    if (
+      !["breakfast", "lunch", "dinner", "snacks", "other"].includes(
+        bucket.toLowerCase()
+      )
+    ) {
+      return res.status(400).json({ error: "Invalid bucket" });
     }
 
     const date = new Date(req.params.date);
@@ -508,23 +861,27 @@ router.post('/nutrition/:date/meal', async (req, res) => {
     item.quantity = item.quantity && item.quantity > 0 ? item.quantity : 1;
 
     // ✅ Ensure name exists
-    if (!item.name || item.name.trim() === '') {
-      return res.status(400).json({ error: 'Food item must have a name' });
+    if (!item.name || item.name.trim() === "") {
+      return res.status(400).json({ error: "Food item must have a name" });
     }
 
     let doc = await DayNutrition.findOne({ user: req.user._id, date });
     if (!doc) {
-      doc = new DayNutrition({ user: req.user._id, date, meals: { [bucket]: [] } });
+      doc = new DayNutrition({
+        user: req.user._id,
+        date,
+        meals: { [bucket]: [] },
+      });
     }
 
     // ✅ Check if food already exists in the bucket (match by name + calories)
-    const existing = doc.meals[bucket].find(m =>
-      m.name === item.name && m.calories === item.calories
+    const existing = doc.meals[bucket].find(
+      (m) => m.name === item.name && m.calories === item.calories
     );
 
     if (existing) {
-      console.log(bucket, item, existing)
-      existing.quantity += item.quantity||1;
+      console.log(bucket, item, existing);
+      existing.quantity += item.quantity || 1;
       await doc.save();
     } else {
       doc.meals[bucket].push(item);
@@ -532,15 +889,13 @@ router.post('/nutrition/:date/meal', async (req, res) => {
     }
 
     res.status(201).json(doc);
-
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-
-router.post('/nutrition/:date/hydration', async (req, res) => {
+router.post("/nutrition/:date/hydration", async (req, res) => {
   const { water } = req.body; // positive or negative oz
   const date = new Date(req.params.date);
   const doc = await DayNutrition.findOneAndUpdate(
@@ -553,47 +908,59 @@ router.post('/nutrition/:date/hydration', async (req, res) => {
 
 /** Events (summary/vitals/workouts; manual add) */
 router.get("/events", async (_req, res) => {
-  const comps = await Event.find().sort({ createdAt: -1 }).populate("author").select("-passwordHash");
+  const comps = await Event.find()
+    .sort({ createdAt: -1 })
+    .populate("author")
+    .select("-passwordHash");
   res.json(comps);
 });
 
 /** FITNESS (summary/vitals/workouts; manual add) */
-router.get('/fitness/:date', async (req, res) => {
+router.get("/fitness/:date", async (req, res) => {
   const date = new Date(req.params.date);
   const f = await Fitness.findOne({ user: req.user._id, date });
   res.json(f || null);
 });
 
-router.post('/fitness/:date/workouts', async (req, res) => {
+router.post("/fitness/:date/workouts", async (req, res) => {
   const date = new Date(req.params.date);
   const { type, duration_min, distance_mi, calories_kcal, notes } = req.body;
   const f = await Fitness.findOneAndUpdate(
     { user: req.user._id, date },
-    { $push: { workouts: { type, duration_min, distance_mi, calories_kcal, notes } } },
+    {
+      $push: {
+        workouts: { type, duration_min, distance_mi, calories_kcal, notes },
+      },
+    },
     { upsert: true, new: true }
   );
   res.status(201).json(f);
 });
 
 /** MESSAGES (chats with text/image/video) */
-router.get('/chats', async (req, res) => {
-  const chats = await Chat.find({ participants: req.user._id }).sort({ updatedAt: -1 }).populate('participants');
+router.get("/chats", async (req, res) => {
+  const chats = await Chat.find({ participants: req.user._id })
+    .sort({ updatedAt: -1 })
+    .populate("participants");
   res.json(chats);
 });
 
-router.post('/chats', async (req, res) => {
+router.post("/chats", async (req, res) => {
   const { participantIds } = req.body;
 
   if (!Array.isArray(participantIds) || participantIds.length === 0) {
-    return res.status(400).json({ error: 'participantIds required' });
+    return res.status(400).json({ error: "participantIds required" });
   }
 
   // Include the logged-in user automatically
-  const allParticipants = [req.user._id.toString(), ...participantIds.map(id => id.toString())];
+  const allParticipants = [
+    req.user._id.toString(),
+    ...participantIds.map((id) => id.toString()),
+  ];
 
   // Check if chat already exists with exactly these participants
   let chat = await Chat.findOne({
-    participants: { $all: allParticipants, $size: allParticipants.length }
+    participants: { $all: allParticipants, $size: allParticipants.length },
   });
 
   if (!chat) {
@@ -603,30 +970,45 @@ router.post('/chats', async (req, res) => {
   res.status(200).json(chat);
 });
 
-router.get('/chats/:id/messages', async (req, res) => {
-  const msgs = await Message.find({ chatId: req.params.id }).sort({ createdAt: 1 });
+router.get("/chats/:id/messages", async (req, res) => {
+  const msgs = await Message.find({ chatId: req.params.id }).sort({
+    createdAt: 1,
+  });
   res.json(msgs);
 });
 
-router.post('/chats/:id/messages', async (req, res) => {
+router.post("/chats/:id/messages", async (req, res) => {
   const { content, mediaUrl, mediaType } = req.body;
-  const msg = await Message.create({ chatId: req.params.id, sender: req.user._id, content, mediaUrl, mediaType: mediaType || 'none' });
+  const msg = await Message.create({
+    chatId: req.params.id,
+    sender: req.user._id,
+    content,
+    mediaUrl,
+    mediaType: mediaType || "none",
+  });
   await Chat.findByIdAndUpdate(req.params.id, { lastMessageAt: new Date() });
   res.status(201).json(msg);
 });
 
 /** SURVEYS (list & respond; tabs: required/optional/past are client filters) */
-router.get('/surveys', async (req, res) => {
+router.get("/surveys", async (req, res) => {
   try {
-    const Survey = require('../models/Survey');
+    const Survey = require("../models/Survey");
     const userId = req.user._id;
 
-    const list = await Survey.find({
-      // ✅ exclude surveys where responses.user contains this user
-      "responses.user": { $ne: userId }
-    })
-      .select("-responses")
-      .sort({ createdAt: -1 });
+    const startOfToday = new Date();
+startOfToday.setHours(0, 0, 0, 0);
+
+const list = await Survey.find({
+  "responses.user": { $ne: userId },
+  $or: [
+    { dueDate: { $gte: startOfToday } }, // today or later
+    { dueDate: null },                   // explicitly null
+    { dueDate: { $exists: false } }      // missing
+  ]
+})
+  .select("-responses")
+  .sort({ createdAt: -1 });
 
     res.json(list);
   } catch (err) {
@@ -634,40 +1016,42 @@ router.get('/surveys', async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
-router.get('/surveys', async (req, res) => {
+// router.get("/surveys", async (req, res) => {
+//   try {
+//     const Survey = require("../models/Survey");
+//     const userId = req.user._id;
+
+//     const list = await Survey.find({
+//       // ✅ exclude surveys where responses.user contains this user
+//       "responses.user": { $ne: userId },
+//     })
+//       .select("-responses")
+//       .sort({ createdAt: -1 });
+
+//     res.json(list);
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: "Server error" });
+//   }
+// });
+
+router.get("/surveys/:id", async (req, res) => {
   try {
-    const Survey = require('../models/Survey');
-    const userId = req.user._id;
-
-    const list = await Survey.find({
-      // ✅ exclude surveys where responses.user contains this user
-      "responses.user": { $ne: userId }
-    })
-      .select("-responses")
-      .sort({ createdAt: -1 });
-
-    res.json(list);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-router.get('/surveys/:id', async (req, res) => {
-  try {
-    const Survey = require('../models/Survey');
+    const Survey = require("../models/Survey");
     const userId = req.user._id;
 
     const survey = await Survey.findOne({
       _id: req.params.id,
       // ✅ exclude if user already responded
-      responses: { $not: { $elemMatch: { user: userId } } }
+      responses: { $not: { $elemMatch: { user: userId } } },
     })
       .select("-responses")
       .sort({ createdAt: -1 });
 
     if (!survey) {
-      return res.status(404).json({ error: "Survey not found or already submitted" });
+      return res
+        .status(404)
+        .json({ error: "Survey not found or already submitted" });
     }
 
     res.json(survey);
@@ -677,21 +1061,23 @@ router.get('/surveys/:id', async (req, res) => {
   }
 });
 
-router.post('/surveys/:id/response', async (req, res) => {
+router.post("/surveys/:id/response", async (req, res) => {
   try {
-    const Survey = require('../models/Survey');
+    const Survey = require("../models/Survey");
     const { answers } = req.body;
 
     const s = await Survey.findById(req.params.id);
-    if (!s) return res.status(404).json({ error: 'Not found' });
+    if (!s) return res.status(404).json({ error: "Not found" });
 
     // ✅ check if user already responded
     const alreadyResponded = s.responses.some(
-      r => r.user.toString() === req.user._id.toString()
+      (r) => r.user.toString() === req.user._id.toString()
     );
 
     if (alreadyResponded) {
-      return res.status(200).json({ error: "You have already submitted this survey." });
+      return res
+        .status(200)
+        .json({ error: "You have already submitted this survey." });
     }
 
     // ✅ add new response

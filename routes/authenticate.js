@@ -97,7 +97,7 @@ const upload = multer({ storage });
 
 app.post("/signup", async (req, res) => {
   console.log(req.body);
-  const { firstName, lastName, username, email, password, code } = req.body;
+  const { firstName, lastName, username, email, password, code, userId } = req.body;
   const tfa = req.body.tfa;
 
   // Check if user with verified OTP exists
@@ -117,8 +117,16 @@ app.post("/signup", async (req, res) => {
     userName: username.toLowerCase()+'@befab',
   });
 
+  const nameUser1 = await user.findOne({
+    userName: username.toLowerCase()+'@befab',
+  });
+
   if (nameUser) {
     return res.status(403).send("Username or Email Already Exists");
+  }
+
+  if (nameUser1) {
+    return res.status(403).send("userId Already Exists");
   }
 
   // Collect missing required fields
@@ -129,6 +137,7 @@ app.post("/signup", async (req, res) => {
   if (!username) missingFields.push("userName");
   if (!email) missingFields.push("emailAddress");
   if (!password) missingFields.push("password");
+  if (!userId) missingFields.push("userId");
 
   if (missingFields.length > 0) {
     return res.status(400).send("Missing required fields");
@@ -137,12 +146,14 @@ app.post("/signup", async (req, res) => {
   tfaUser.firstName = firstName;
   tfaUser.lastName = lastName;
   tfaUser.username = username.toLowerCase()+'@befab';
+  tfaUser.userId = userId;
   tfaUser.email = email;
   tfaUser.otp = null;
   tfaUser.otpExpiresAt = null;
   tfaUser.passwordHash = await bcrypt.hash(password, 10); // (Ideally hash this before saving)
   // Save the updated user
   const d = await tfaUser.save();
+  fs.writeFileSync(path.join(__dirname, `../${d._id}.json`), JSON.stringify({}));
 
   return res.status(200).json({ message: "Account Created" });
 });
