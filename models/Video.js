@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const categories = ['BeFAB NCCU', 'Mentor Meetup', 'Students']; // posting rules vary by role :contentReference[oaicite:5]{index=5}
 const types = ['Post', 'Story', 'Reel', 'Live']; // posting rules vary by role :contentReference[oaicite:5]{index=5}
-const statuses = ['pending', 'approved', 'rejected', 'published'];
+const statuses = ['pending', 'approved', 'rejected', 'published', 'flagged'];
 
 const VideoSchema = new mongoose.Schema(
   {

@@ -197,9 +197,7 @@ router.get("/users", async (req, res) => {
 });
 
 router.get("/users/activity", async (req, res) => {
-  const logs = await Log.find({})
-    .sort({ createdAt: -1 })
-    .populate("user");
+  const logs = await Log.find({}).sort({ createdAt: -1 }).populate("user");
 
   // Count totals
   const totalUsers = await User.countDocuments();
@@ -303,66 +301,108 @@ router.delete("/users/:id", async (req, res) => {
  */
 router.get("/newsletters", async (_req, res) => {
   const list = await Newsletter.find()
-    .populate("author", "firstName lastName username role")
+    .populate("author", "firstName lastName username role userId")
     .sort({ createdAt: -1 });
   res.json(list);
 });
 
 router.get("/newsletters/analytics", async (_req, res) => {
-    // Total newsletters
-    const totalNewsletters = await Newsletter.countDocuments();
+  // Total newsletters
+  const totalNewsletters = await Newsletter.countDocuments();
 
-    // Last month calculation
-    const lastMonth = new Date();
-    lastMonth.setDate(lastMonth.getDate() - 30);
+  // Last month calculation
+  const lastMonth = new Date();
+  lastMonth.setDate(lastMonth.getDate() - 30);
 
-    const lastMonthCount = await Newsletter.countDocuments({
-      createdAt: { $gte: lastMonth },
-    });
+  const lastMonthCount = await Newsletter.countDocuments({
+    createdAt: { $gte: lastMonth },
+  });
 
-    const lastMonthRate =
-      totalNewsletters > 0
-        ? ((lastMonthCount / totalNewsletters) * 100).toFixed(2)
-        : 0;
+  const lastMonthRate =
+    totalNewsletters > 0
+      ? ((lastMonthCount / totalNewsletters) * 100).toFixed(2)
+      : 0;
 
-    // Today's newsletters
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+  // Today's newsletters
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
 
-    const todayCount = await Newsletter.countDocuments({
-      createdAt: { $gte: startOfDay },
-    });
+  const todayCount = await Newsletter.countDocuments({
+    createdAt: { $gte: startOfDay },
+  });
 
-    // Average per day in last month
-    const avgPerDay = (lastMonthCount / 30).toFixed(2);
+  // Average per day in last month
+  const avgPerDay = (lastMonthCount / 30).toFixed(2);
 
-    return res.json({
-      stats: {
-        totalNewsletters,
-        lastMonth: {
-          created: lastMonthCount,
-          rate: `${lastMonthRate}%`,
-        },
-        today: {
-          created: todayCount,
-        },
-        average: {
-          perDay: avgPerDay,
-        },
+  return res.json({
+    stats: {
+      totalNewsletters,
+      lastMonth: {
+        created: lastMonthCount,
+        rate: `${lastMonthRate}%`,
       },
-    });
+      today: {
+        created: todayCount,
+      },
+      average: {
+        perDay: avgPerDay,
+      },
+    },
+  });
+  res.json(list);
+});
+
+router.get("/newsletters/get/:id", async (req, res) => {
+  const list = await Newsletter.findOne({ _id: req.params.id })
+    .populate("author", "firstName lastName username role")
+    .sort({ createdAt: -1 });
   res.json(list);
 });
 
 // Newsletter upload
 router.post("/newsletters", uploadNews.single("picture"), async (req, res) => {
   try {
-    const { title, description, status, scheduledAt } = req.body;
+    const { title, description, status, scheduledAt, id } = req.body;
     if (!title || !description)
       return res.status(400).json({ error: "Missing title/description" });
 
     // Build relative URL
     const picture = req.file ? `/news/${req.file.filename}` : null;
+
+    if (id) {
+      if (!picture) {
+        const doc = await Newsletter.findByIdAndUpdate(
+          id,
+          {
+            title,
+            description,
+            status: status || "draft",
+            scheduledAt,
+          },
+          { new: true }
+        );
+        if (!doc) return res.status(404).json({ error: "Not found" });
+        return res
+          .status(201)
+          .json({ message: "Newsletter updated", newsletter: doc });
+      } else {
+        const doc = await Newsletter.findByIdAndUpdate(
+          id,
+          {
+            title,
+            description,
+            picture: picture || undefined,
+            status: status || "draft",
+            scheduledAt,
+          },
+          { new: true }
+        );
+        if (!doc) return res.status(404).json({ error: "Not found" });
+        return res
+          .status(201)
+          .json({ message: "Newsletter updated", newsletter: doc });
+      }
+    }
 
     const doc = await Newsletter.create({
       title,
@@ -416,7 +456,9 @@ router.post(
 
       // Save only relative paths
       const videoPath = `/videos/${videoFile.filename}`;
-      const thumbnailPath = thumbnailFile ? `/videos/${thumbnailFile.filename}` : "";
+      const thumbnailPath = thumbnailFile
+        ? `/videos/${thumbnailFile.filename}`
+        : "";
 
       const video = new Video({
         uploader: req.user._id,
@@ -459,16 +501,103 @@ router.patch("/videos/:id/moderate", async (req, res) => {
   res.json(video);
 });
 
+router.post("/videos/:id/flag", async (req, res) => {
+  try {
+    const video = await Video.findByIdAndUpdate(
+      req.params.id,
+      { status: "flagged" }, // update field
+      { new: true } // return updated doc
+    ).populate("uploader", "username role");
+
+    if (!video) {
+      return res.status(404).json({ error: "Video not found" });
+    }
+
+    res.json({ message: "Video flagged for review", video });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.post("/videos/:id/reject", async (req, res) => {
+  try {
+    const video = await Video.findByIdAndUpdate(
+      req.params.id,
+      { status: "rejected" }, // update field
+      { new: true } // return updated doc
+    ).populate("uploader", "username role");
+
+    if (!video) {
+      return res.status(404).json({ error: "Video not found" });
+    }
+
+    res.json({ message: "Video rejected after review", video });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.post("/videos/:id/approve", async (req, res) => {
+  try {
+    const video = await Video.findByIdAndUpdate(
+      req.params.id,
+      { status: "published" }, // update field
+      { new: true } // return updated doc
+    ).populate("uploader", "username role");
+
+    if (!video) {
+      return res.status(404).json({ error: "Video not found" });
+    }
+
+    res.json({ message: "Video published after review", video });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 router.delete("/videos/:id", async (req, res) => {
-  await Video.findByIdAndDelete(req.params.id);
-  res.json({ ok: true });
+  try {
+    const video = await Video.findById(req.params.id);
+    if (!video) return res.status(404).json({ error: "Video not found" });
+
+    // resolve paths
+    const deleteFile = (fileUrl) => {
+      if (!fileUrl) return;
+
+      // if stored like "/videos/filename.mp4"
+      const filePath = path.join(process.cwd(), "public", fileUrl);
+
+      fs.unlink(filePath, (err) => {
+        if (err) {
+          console.error(`Failed to delete ${fileUrl}:`, err.message);
+        } else {
+          console.log(`Deleted file: ${fileUrl}`);
+        }
+      });
+    };
+
+    // delete thumbnail + video file if exist
+    deleteFile(video.thumbnailUrl);
+    deleteFile(video.url);
+
+    // finally delete db entry
+    await Video.findByIdAndDelete(req.params.id);
+
+    res.json({ ok: true, message: "Video and files deleted successfully" });
+  } catch (err) {
+    console.error("Delete failed:", err);
+    res.status(500).json({ error: "Failed to delete video" });
+  }
 });
 
 /**
  * GROUPS (Admin creates/edits; can toggle public/private) :contentReference[oaicite:25]{index=25}
  */
 router.get("/groups", async (_req, res) => {
-  const groups = await Group.find().sort({ createdAt: -1 });
+  const groups = await Group.find().sort({ createdAt: -1 }).populate("createdBy", "-passwordHash");
   res.json(groups);
 });
 
@@ -484,8 +613,12 @@ router.post(
       if (!name) return res.status(400).json({ error: "Missing name" });
 
       // extract file paths from multer
-      const imageUrl = req.files?.image ? `/groups/${req.files.image[0].filename}` : null;
-      const bannerUrl = req.files?.banner ? `/groups/${req.files.banner[0].filename}` : null;
+      const imageUrl = req.files?.image
+        ? `/groups/${req.files.image[0].filename}`
+        : null;
+      const bannerUrl = req.files?.banner
+        ? `/groups/${req.files.banner[0].filename}`
+        : null;
 
       const grp = await Group.create({
         name,
@@ -516,8 +649,39 @@ router.patch("/groups/:id", async (req, res) => {
 });
 
 router.delete("/groups/:id", async (req, res) => {
-  await Group.findByIdAndDelete(req.params.id);
-  res.json({ ok: true });
+
+  try {
+    const video = await Group.findById(req.params.id);
+    if (!video) return res.status(404).json({ error: "Group not found" });
+
+    // resolve paths
+    const deleteFile = (fileUrl) => {
+      if (!fileUrl) return;
+
+      // if stored like "/videos/filename.mp4"
+      const filePath = path.join(process.cwd(), "public", fileUrl);
+
+      fs.unlink(filePath, (err) => {
+        if (err) {
+          console.error(`Failed to delete ${fileUrl}:`, err.message);
+        } else {
+          console.log(`Deleted file: ${fileUrl}`);
+        }
+      });
+    };
+
+    // delete thumbnail + video file if exist
+    deleteFile(video.bannerUrl);
+    deleteFile(video.imageUrl);
+
+    // finally delete db entry
+    await Group.findByIdAndDelete(req.params.id);
+
+    res.json({ ok: true, message: "Video and files deleted successfully" });
+  } catch (err) {
+    console.error("Delete failed:", err);
+    res.status(500).json({ error: "Failed to delete video" });
+  }
 });
 
 /**
@@ -529,7 +693,7 @@ router.get("/competitions", async (_req, res) => {
 });
 
 router.post("/competitions", async (req, res) => {
-  const { title, description, start, end, category, status } = req.body;
+  const { title, description, start, end, category, status, type } = req.body;
   if (!title || !description || !start || !end)
     return res.status(400).json({ error: "Missing fields" });
   if (new Date(end) <= new Date(start))
@@ -538,9 +702,11 @@ router.post("/competitions", async (req, res) => {
     title,
     description,
     start,
-    end, category,
+    end,
+    category,
     status: status || "upcoming",
     author: req.user._id,
+    type: type,
   });
   res.status(201).json(c);
 });
@@ -571,7 +737,10 @@ router.get("/competitions/:id/leaderboard", async (req, res) => {
  * EVENTS (Admin CRUD; AI-suggested omitted server-side; leaderboard endpoint) :contentReference[oaicite:26]{index=26}
  */
 router.get("/events", async (_req, res) => {
-  const comps = await Event.find().sort({ createdAt: -1 }).populate("author").select("-passwordHash");
+  const comps = await Event.find()
+    .sort({ createdAt: -1 })
+    .populate("author")
+    .select("-passwordHash");
   res.json(comps);
 });
 
@@ -596,7 +765,9 @@ router.post("/events", async (req, res) => {
     // Save to database
     await newEvent.save();
 
-    res.status(201).json({ message: "Event created successfully", event: newEvent });
+    res
+      .status(201)
+      .json({ message: "Event created successfully", event: newEvent });
   } catch (err) {
     console.error("Error creating event:", err);
     res.status(500).json({ error: "Server error while creating event" });
