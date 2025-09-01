@@ -11,7 +11,7 @@ const fs = require("fs");
 const mongoose = require("mongoose");
 // const passport = require("passport");
 // const session = require("express-session");
-const user = require("../models/user.js");
+const user = require("../models/User.js");
 const Log = require("../models/logs.js");
 // const samlStrategy = require("./samlStrategy.js");
 

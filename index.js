@@ -10,8 +10,8 @@ const { Server } = require("socket.io");
 const appRoutes = require("./routes/app");
 const adminRoutes = require("./routes/admin");
 const authRoutes = require("./routes/authenticate");
-const User = require("./models/user");
-const { Chat, Message } = require("./models/message"); // import your schemas
+const User = require("./models/User");
+const { Chat, Message } = require("./models/Message"); // import your schemas
 
 const app = express();
 const server = http.createServer(app); // wrap express with http server
