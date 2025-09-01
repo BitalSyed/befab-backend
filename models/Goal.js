@@ -23,6 +23,12 @@ const GoalSchema = new mongoose.Schema(
       default: "Steps",
     },
 
+    creator: {
+      type: String,
+      enum: ["Admin", "User", "AI"],
+      default: "User",
+    },
+
     startDate: { type: Date, default: Date.now },
   },
   { timestamps: true }

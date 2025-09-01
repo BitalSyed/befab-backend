@@ -15,6 +15,8 @@ const fs = require("fs");
 const Log = require("../models/logs");
 const { events } = require("../models/events");
 const Event = require("../models/events");
+const { Chat, Message } = require("../models/Message");
+const Goal = require("../models/Goal");
 
 // All admin routes require admin
 router.use(requireAuth, requireRole("admin"));
@@ -597,7 +599,9 @@ router.delete("/videos/:id", async (req, res) => {
  * GROUPS (Admin creates/edits; can toggle public/private) :contentReference[oaicite:25]{index=25}
  */
 router.get("/groups", async (_req, res) => {
-  const groups = await Group.find().sort({ createdAt: -1 }).populate("createdBy", "-passwordHash");
+  const groups = await Group.find()
+    .sort({ createdAt: -1 })
+    .populate("createdBy", "-passwordHash");
   res.json(groups);
 });
 
@@ -649,7 +653,6 @@ router.patch("/groups/:id", async (req, res) => {
 });
 
 router.delete("/groups/:id", async (req, res) => {
-
   try {
     const video = await Group.findById(req.params.id);
     if (!video) return res.status(404).json({ error: "Group not found" });
@@ -800,8 +803,54 @@ router.post("/events", async (req, res) => {
  * SURVEYS (Admin creates; required/optional) :contentReference[oaicite:27]{index=27}
  */
 router.get("/surveys", async (_req, res) => {
-  const list = await Survey.find().sort({ createdAt: -1 });
+  const list = await Survey.find()
+    .sort({ createdAt: -1 })
+    .populate("createdBy", "-passwordHash");
   res.json(list);
+});
+
+router.get("/surveys/:id", async (req, res) => {
+  const list = await Survey.findOne({ _id: req.params.id })
+    .sort({ createdAt: -1 })
+    .populate("createdBy", "-passwordHash") // populate createdBy excluding passwordHash
+    .populate({
+      path: "responses", // populate the responses array
+      populate: {
+        path: "user", // inside each response, populate the user field
+        select: "-passwordHash", // exclude passwordHash
+      },
+    });
+  res.json(list);
+});
+
+router.post("/surveys/:id/response", async (req, res) => {
+  try {
+    const Survey = require("../models/Survey");
+    const { answers } = req.body;
+
+    const s = await Survey.findById(req.params.id);
+    if (!s) return res.status(404).json({ error: "Not found" });
+
+    // ✅ check if user already responded
+    const alreadyResponded = s.responses.some(
+      (r) => r.user.toString() === req.user._id.toString()
+    );
+
+    if (alreadyResponded) {
+      return res
+        .status(200)
+        .json({ error: "You have already submitted this survey." });
+    }
+
+    // ✅ add new response
+    s.responses.push({ user: req.user._id, answers });
+    await s.save();
+
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 router.post("/surveys", async (req, res) => {
@@ -839,6 +888,125 @@ router.patch("/surveys/:id", async (req, res) => {
 router.delete("/surveys/:id", async (req, res) => {
   await Survey.findByIdAndDelete(req.params.id);
   res.json({ ok: true });
+});
+
+router.get("/chats/get", async (req, res) => {
+  const chats = await Chat.find({})
+    .sort({ updatedAt: -1 })
+    .populate("participants");
+  res.json(chats);
+});
+
+router.get("/chats", async (req, res) => {
+  const chats = await Chat.find({ participants: req.user._id })
+    .sort({ updatedAt: -1 })
+    .populate("participants");
+  res.json(chats);
+});
+
+
+router.post("/chats", async (req, res) => {
+  const { participantIds } = req.body;
+
+  if (!Array.isArray(participantIds) || participantIds.length === 0) {
+    return res.status(400).json({ error: "participantIds required" });
+  }
+
+  // Include the logged-in user automatically
+  const allParticipants = [
+    req.user._id.toString(),
+    ...participantIds.map((id) => id.toString()),
+  ];
+
+  // Check if chat already exists with exactly these participants
+  let chat = await Chat.findOne({
+    participants: { $all: allParticipants, $size: allParticipants.length },
+  });
+
+  if (!chat) {
+    chat = await Chat.create({ participants: allParticipants });
+  }
+
+  res.status(200).json(chat);
+});
+
+router.get("/chats/:id/messages", async (req, res) => {
+  const msgs = await Message.find({ chatId: req.params.id }).sort({
+    createdAt: 1,
+  });
+  res.json(msgs);
+});
+
+router.post("/chats/:id/messages", async (req, res) => {
+  const { content, mediaUrl, mediaType } = req.body;
+  const msg = await Message.create({
+    chatId: req.params.id,
+    sender: req.user._id,
+    content,
+    mediaUrl,
+    mediaType: mediaType || "none",
+  });
+  await Chat.findByIdAndUpdate(req.params.id, { lastMessageAt: new Date() });
+  res.status(201).json(msg);
+});
+
+router.get("/goals", async (req, res) => {
+  try {
+    // 2. Get all user goals
+    const goals = await Goal.find({ user: req.user._id }).sort({
+      createdAt: -1,
+    }).populate("user","-passwordHash");
+
+    // 7. Send updated list
+    res.status(200).json(goals);
+  } catch (err) {
+    console.error("Error fetching goals:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.get("/goals/current", async (req, res) => {
+  const list = await Goal.findOne({
+    user: req.user._id,
+    category: req.query.q,
+  }).sort({ createdAt: -1 });
+
+  res.json(list);
+});
+
+router.post("/goals", async (req, res) => {
+  try {
+    const { name, durationDays, milestones, category, user } = req.body;
+    if (!name || !durationDays || !milestones || !category || !user) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // Get last goal for this user (latest createdAt)
+    const lastGoal = await Goal.findOne({
+      user: req.user._id,
+      category: category,
+      status: { $in: ["expiired", "completed"] },
+    }).sort({ createdAt: -1 });
+
+    const un=await User.findOne({username:user});
+
+    if (lastGoal)
+      return res.status(400).json({ error: "An uncompleted goal exist" });
+
+    const goal = await Goal.create({
+      user: un._id,
+      name,
+      category,
+      durationDays,
+      milestones,
+      creator: "Admin",
+    });
+
+    res.status(201).json(goal);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 module.exports = router;
