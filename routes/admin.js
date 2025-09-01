@@ -904,7 +904,6 @@ router.get("/chats", async (req, res) => {
   res.json(chats);
 });
 
-
 router.post("/chats", async (req, res) => {
   const { participantIds } = req.body;
 
@@ -953,9 +952,11 @@ router.post("/chats/:id/messages", async (req, res) => {
 router.get("/goals", async (req, res) => {
   try {
     // 2. Get all user goals
-    const goals = await Goal.find({ user: req.user._id }).sort({
-      createdAt: -1,
-    }).populate("user","-passwordHash");
+    const goals = await Goal.find({})
+      .sort({
+        createdAt: -1,
+      })
+      .populate("user", "-passwordHash");
 
     // 7. Send updated list
     res.status(200).json(goals);
@@ -988,7 +989,7 @@ router.post("/goals", async (req, res) => {
       status: { $in: ["expiired", "completed"] },
     }).sort({ createdAt: -1 });
 
-    const un=await User.findOne({username:user});
+    const un = await User.findOne({ username: user });
 
     if (lastGoal)
       return res.status(400).json({ error: "An uncompleted goal exist" });
@@ -1005,6 +1006,276 @@ router.post("/goals", async (req, res) => {
     res.status(201).json(goal);
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+function readSampleJson(userId) {
+  try {
+    const p = path.join(__dirname, `../${userId}.json`);
+    if (fs.existsSync(p)) {
+      const raw = fs.readFileSync(p, "utf8");
+      const data = JSON.parse(raw);
+      // Accept either array or { data: [...] }
+      return Array.isArray(data)
+        ? data
+        : Array.isArray(data?.data)
+        ? data.data
+        : [];
+    }
+  } catch (e) {
+    console.error("Failed reading sample JSON:", e.message);
+  }
+  return [];
+}
+
+/**
+ * Normalize a Fitness-like doc (from DB or sample JSON) into a consistent shape
+ */
+function normalizeEntry(e) {
+  const date = new Date(e.date);
+  const summary = e.summary || {};
+  const vitals = e.vitals || {};
+  const body = e.bodyMeasurements || e.body || {};
+
+  // Activities array (manual workouts etc.)
+  const activities = Array.isArray(e.activities) ? e.activities : [];
+
+  // Attempt to infer "active minutes" from activities durations (sum of duration_min).
+  const activeMin = activities.reduce(
+    (acc, a) => acc + (Number(a.duration_min) || 0),
+    0
+  );
+
+  // Try to map a few common name variants we might see in sample JSON.
+  const hr =
+    Number(summary.heartRate_bpm ?? e.heartRate_bpm ?? e.heartRate ?? 0) || 0;
+  const steps = Number(summary.steps ?? e.steps ?? 0) || 0;
+  const calories =
+    Number(summary.calories_kcal ?? e.calories_kcal ?? e.calories ?? 0) || 0;
+
+  const bmi = Number(body.bmi ?? e.bmi ?? 0) || 0;
+  const bodyFatPct =
+    Number(body.bodyFat_pct ?? e.bodyFat_pct ?? e.fat ?? 0) || 0;
+
+  return {
+    date,
+    steps,
+    calories,
+    activeMin,
+    heartRate_bpm: hr,
+    bmi,
+    bodyFat_pct: bodyFatPct,
+    activities, // keep original to count types (type, duration_min, etc.)
+  };
+}
+
+/**
+ * Group by day key (YYYY-MM-DD)
+ */
+function dayKey(d) {
+  const dt = new Date(d);
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+/**
+ * Group by ISO week (YYYY-Www). Uses Monday as week start.
+ */
+function weekKey(d) {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = (date.getUTCDay() + 6) % 7; // Mon=0..Sun=6
+  date.setUTCDate(date.getUTCDate() - dayNum + 3); // move to Thu of current week
+  const firstThu = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));
+  const weekNo =
+    1 +
+    Math.round(
+      ((date - firstThu) / 86400000 - 3 + ((firstThu.getUTCDay() + 6) % 7)) / 7
+    );
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+
+/**
+ * Compute percentage breakdown from a map of counts
+ */
+function percentageMap(counts) {
+  const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
+  const out = {};
+  for (const [k, v] of Object.entries(counts)) {
+    out[k] = +((v * 100) / total).toFixed(2);
+  }
+  return out;
+}
+
+/**
+ * GET /analytics/:userId
+ *
+ * Response JSON:
+ * {
+ *   totals: { totalWorkouts, activeUsers, avgSteps, caloriesBurned, activityCompliancePct },
+ *   charts: {
+ *     sevenDay: {
+ *       labels: [...7 dates...],
+ *       steps: [...],
+ *       calories: [...],
+ *       activeMinutes: [...]
+ *     },
+ *     eightWeeks: {
+ *       labels: ["YYYY-W##", ... up to 8],
+ *       heartRateAvg: [...],
+ *       bmiAvg: [...],
+ *       bodyFatPctAvg: [...]
+ *     }
+ *   },
+ *   workoutTypeTotals: { strength, cardio, other, hiit, yoga, pilates },
+ *   activityPercentages: { running, weightTraining, yoga }
+ * }
+ */
+
+/**
+ * Normalize one fitness entry (adjust this to match your actual JSON schema!)
+ */
+function normalizeEntry(data) {
+  const steps = (data["HealthDataType.STEPS"] || []).reduce(
+    (sum, e) => sum + (e.value?.numericValue || 0),
+    0
+  );
+
+  const calories = (data["HealthDataType.TOTAL_CALORIES_BURNED"] || []).reduce(
+    (sum, e) => sum + (e.value?.numericValue || 0),
+    0
+  );
+
+  const hrData = (data["HealthDataType.HEART_RATE"] || []).map(
+    (e) => e.value?.numericValue || 0
+  );
+  const heartRate = hrData.length
+    ? hrData.reduce((a, b) => a + b, 0) / hrData.length
+    : 0;
+
+  const bmiData = data["HealthDataType.BODY_MASS_INDEX"] || [];
+  const bmi = bmiData.length
+    ? bmiData[bmiData.length - 1].value.numericValue
+    : 0;
+
+  const fatData = data["HealthDataType.BODY_FAT_PERCENTAGE"] || [];
+  const fat = fatData.length
+    ? fatData[fatData.length - 1].value.numericValue
+    : 0;
+
+  const sleepMinutes = (data["HealthDataType.SLEEP_SESSION"] || []).reduce(
+    (sum, e) => sum + (e.value?.numericValue || 0),
+    0
+  );
+
+  const distanceMeters = (data["HealthDataType.DISTANCE_DELTA"] || []).reduce(
+    (sum, e) => sum + (e.value?.numericValue || 0),
+    0
+  );
+  const distanceKm = distanceMeters / 1000;
+
+  // --- Activity Categories ---
+  const totalActivityScore = steps + distanceKm * 1000 + calories;
+
+  const cardio = totalActivityScore
+    ? (steps + distanceKm * 1000 + calories) / totalActivityScore
+    : 0;
+  const strength = 0; // no clear data → leave 0 or approximate
+  const yoga = 0; // no clear data → leave 0 or approximate
+  const others = 1 - cardio - strength - yoga;
+
+  return {
+    steps,
+    calories,
+    heartRate,
+    bmi,
+    fat,
+    sleepMinutes,
+    distanceKm,
+    categories: {
+      cardio: +(cardio * 100).toFixed(1),
+      strength: +(strength * 100).toFixed(1),
+      yoga: +(yoga * 100).toFixed(1),
+      others: +(others * 100).toFixed(1),
+    },
+  };
+}
+
+/**
+ * Utility helpers
+ */
+function dayKey(d) {
+  const dt = new Date(d);
+  return dt.toISOString().split("T")[0]; // YYYY-MM-DD
+}
+function weekKey(d) {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = (date.getUTCDay() + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - dayNum + 3);
+  const firstThu = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));
+  const weekNo =
+    1 +
+    Math.round(
+      ((date - firstThu) / 86400000 - 3 + ((firstThu.getUTCDay() + 6) % 7)) / 7
+    );
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+function percentageMap(counts) {
+  const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
+  const out = {};
+  for (const [k, v] of Object.entries(counts)) {
+    out[k] = +((v * 100) / total).toFixed(2);
+  }
+  return out;
+}
+
+/**
+ * GET /fitness
+ * Aggregates all user JSON files in root dir
+ */
+
+function getTotalHealthDataForDate(jsonPath, dataType, targetDate) {
+  // Fetch the JSON data
+  const dataPath = path.join(__dirname, `../${jsonPath}.json`);
+  const healthData = JSON.parse(fs.readFileSync(dataPath, "utf-8"));
+
+  // Extract the data for the specified type
+  const dataArray = healthData[dataType] || [];
+
+  // Convert target date to match the format in the data (YYYY-MM-DD)
+  const formattedTargetDate = new Date(targetDate).toISOString().split("T")[0];
+
+  // Filter data for the target date and sum numeric values
+  const total = dataArray.reduce((sum, entry) => {
+    const entryDate = entry.dateFrom.split("T")[0];
+    if (
+      entryDate === formattedTargetDate &&
+      entry.value &&
+      entry.value.numericValue !== undefined
+    ) {
+      return sum + entry.value.numericValue;
+    }
+    return sum;
+  }, 0);
+
+  return total;
+}
+
+router.get("/fitness", async (req, res) => {
+  try {
+    console.log(
+      getTotalHealthDataForDate(
+        "68a8cf47ed7f637f5dafc1bc",
+        "HealthDataType.STEPS",
+        "2025-08-30"
+      )
+    );
+    // Response
+    res.json({});
+  } catch (err) {
+    console.error("Analytics error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
