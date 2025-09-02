@@ -4,6 +4,7 @@ const { requireAuth } = require("../middleware/auth");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const bcrypt = require("bcrypt");
 
 const Newsletter = require("../models/Newsletter");
 const Video = require("../models/Video");
@@ -56,8 +57,193 @@ router.get("/get", async (req, res) => {
   //   `${user.firstName} Logged-in as Admin`
   // );
 
+  console.log(u)
+
   return res.json(u);
 });
+
+// Configure Multer storage
+const storage1 = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = path.join(__dirname, "../files/profile");
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname);
+    const uniqueName = `avatar_${Date.now()}${ext}`;
+    cb(null, uniqueName);
+  },
+});
+
+// ✅ Correct: use storage: storage1
+const upload1 = multer({ storage: storage1 });
+
+router.post("/updateProfile", upload1.single("avatar"), async (req, res) => {
+  try {
+    const email = req.user.email;
+
+    // Find user
+    const u = await User.findOne({ email: email });
+    if (!u) {
+      return res.status(401).json({ error: "User Not Found" });
+    }
+
+    // If file uploaded, update avatarUrl
+    if (req.file) {
+      // Delete old avatar file if exists
+      if (u.avatarUrl) {
+        const oldPath = path.join(__dirname, "..", u.avatarUrl);
+        if (fs.existsSync(oldPath)) {
+          fs.unlinkSync(oldPath);
+        }
+      }
+
+      // Set new avatar path
+      const relativePath = `/profile/${req.file.filename}`;
+      u.avatarUrl = relativePath;
+      await u.save();
+    }
+
+    return res.json(u);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Update First Name
+router.post("/firstName", async (req, res) => {
+  try {
+    const { firstname } = req.body;
+    console.log('a')
+    if (!firstname) return res.status(400).json({ error: "firstName is required" });
+    console.log('b')
+    const user = await User.findOne({ email: req.user.email });
+    if (!user) return res.status(401).json({ error: "User not found" });
+
+    user.firstName = firstname;
+    await user.save();
+
+    return res.json(user);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Update Last Name
+router.post("/lastName", async (req, res) => {
+  try {
+    const { lastname } = req.body;
+    if (!lastname) return res.status(400).json({ error: "lastName is required" });
+
+    const user = await User.findOne({ email: req.user.email });
+    if (!user) return res.status(401).json({ error: "User not found" });
+
+    user.lastName = lastname;
+    await user.save();
+
+    return res.json(user);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Update Username
+router.post("/username", async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (!username) return res.status(400).json({ error: "username is required" });
+
+    const user = await User.findOne({ email: req.user.email });
+    if (!user) return res.status(401).json({ error: "User not found" });
+
+    // Optional: check if username already exists
+    const existing = await User.findOne({ username });
+    if (existing && existing._id.toString() !== user._id.toString()) {
+      return res.status(400).json({ error: "Username already taken" });
+    }
+
+    user.username = username;
+    await user.save();
+
+    return res.json(user);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+
+// Update Email
+router.post("/email", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "email is required" });
+    
+    const user = await User.findOne({ email: email });
+    if (user) return res.status(401).json({ error: "Email already exists" });
+
+    user.email = email;
+    await user.save();
+
+    return res.json(user);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Update Password
+router.post("/password", async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    if (!oldPassword || !newPassword)
+      return res.status(400).json({ error: "Both oldPassword and newPassword are required" });
+
+    const user = await User.findOne({ email: req.user.email });
+    if (!user) return res.status(401).json({ error: "User not found" });
+
+    const isMatch = await bcrypt.compare(oldPassword, user.passwordHash);
+    if (!isMatch) return res.status(400).json({ error: "Old password is incorrect" });
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+    user.passwordHash = hashed;
+    await user.save();
+
+    return res.json({ message: "Password updated successfully" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Delete Account
+router.post("/deleteAccount", async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.user.email });
+    if (!user) return res.status(401).json({ error: "User not found" });
+
+    // Delete avatar file if exists
+    if (user.avatarUrl) {
+      const oldPath = path.join(__dirname, "..", user.avatarUrl);
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    }
+
+    await User.deleteOne({ email: req.user.email });
+
+    return res.json({ message: "Account deleted successfully" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+
 
 router.get("/users", async (req, res) => {
   try {

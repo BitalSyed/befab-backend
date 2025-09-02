@@ -17,6 +17,7 @@ const { events } = require("../models/events");
 const Event = require("../models/events");
 const { Chat, Message } = require("../models/Message");
 const Goal = require("../models/Goal");
+const Nutrition = require("../models/Nutrition");
 
 // All admin routes require admin
 router.use(requireAuth, requireRole("admin"));
@@ -164,37 +165,105 @@ router.post("/get", async (req, res) => {
  * Matches spec: user counts, content stats, etc.
  */
 router.get("/dashboard", async (req, res) => {
-  const [
-    totalUsers,
-    admins,
-    members,
-    newsletters,
-    videos,
-    groups,
-    competitions,
-    surveys,
-  ] = await Promise.all([
-    User.countDocuments(),
-    User.countDocuments({ role: "admin" }),
-    User.countDocuments({ role: "member" }),
-    Newsletter.countDocuments(),
-    Video.countDocuments(),
-    Group.countDocuments(),
-    Competition.countDocuments(),
-    Survey.countDocuments(),
-  ]);
+  try {
+    // --- Basic counts ---
+    const [
+      totalUsers,
+      activeUsers,
+      newsletters,
+      videos,
+      groups,
+      competitionsCount,
+      surveysCount,
+      allUsers,
+      allCompetitions,
+      allSurveys,
+    ] = await Promise.all([
+      User.countDocuments(),
+      User.countDocuments({ isActive: true }),
+      Newsletter.countDocuments(),
+      Video.countDocuments(),
+      Group.countDocuments(),
+      Competition.countDocuments(),
+      Survey.countDocuments(),
+      User.find({}, "_id createdAt"),
+      Competition.find({ status: "active" })
+        .sort({ createdAt: -1 })
+        .limit(3)
+        .populate({ path: "leaderboard.user", select: "username" }),
+      Survey.find({}),
+    ]);
 
-  res.json({
-    users: { total: totalUsers, admins, members },
-    content: { newsletters, videos, groups, competitions, surveys },
-  });
+    // --- Retention rate ---
+    const now = new Date();
+    const retentionThreshold = new Date();
+    retentionThreshold.setDate(now.getDate() - 30); // example: retention = users created >30 days ago still active
+
+    const retainedUsers = allUsers.filter(
+      (u) => u.createdAt <= retentionThreshold
+    ).length;
+
+    const retentionRate =
+      totalUsers > 0 ? (retainedUsers / totalUsers) * 100 : 0;
+
+    // --- Competitions latest 3 ---
+    const competitions = allCompetitions.map((c) => {
+      const daysLeft = Math.ceil(
+        (new Date(c.endDate) - now) / (1000 * 60 * 60 * 24)
+      );
+
+      return {
+        id: c._id,
+        name: c.name,
+        category: c.category,
+        participants: c.participants.length,
+        daysLeft,
+        leaderboard: c.leaderboard?.[0] || null, // top score
+      };
+    });
+
+    // --- Surveys completion rate ---
+    const surveys = allSurveys.map((s) => {
+      const completionRate =
+        totalUsers > 0 ? (s.responses.length / totalUsers) * 5 : 0; // scale /5
+      return {
+        id: s._id,
+        title: s.title,
+        completionRate: parseFloat(completionRate.toFixed(2)),
+      };
+    });
+
+    res.json({
+      users: {
+        total: totalUsers,
+        active: activeUsers,
+        retentionRate: parseFloat(retentionRate.toFixed(2)), // %
+      },
+      content: {
+        newsletters,
+        videos,
+        groups,
+        competitions: competitionsCount,
+        surveys: surveysCount,
+      },
+      competitions,
+      surveys,
+    });
+  } catch (err) {
+    console.error("Dashboard error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 /**
  * USER MANAGEMENT (Admin)
  */
 router.get("/users", async (req, res) => {
-  const users = await User.find({}).select("-passwordHash");
+  const users = await User.find({
+    username: { $exists: true, $ne: "" },
+    firstName: { $exists: true, $ne: "" },
+    lastName: { $exists: true, $ne: "" },
+  }).select("-passwordHash");
   res.json(users);
 });
 
@@ -1239,7 +1308,13 @@ function percentageMap(counts) {
 function getTotalHealthDataForDate(jsonPath, dataType, targetDate) {
   // Fetch the JSON data
   const dataPath = path.join(__dirname, `../${jsonPath}.json`);
-  const healthData = JSON.parse(fs.readFileSync(dataPath, "utf-8"));
+
+  let healthData = {};
+  if (fs.existsSync(dataPath)) {
+    healthData = JSON.parse(fs.readFileSync(dataPath, "utf-8"));
+  } else {
+    healthData = {}; // or default object
+  }
 
   // Extract the data for the specified type
   const dataArray = healthData[dataType] || [];
@@ -1263,17 +1338,357 @@ function getTotalHealthDataForDate(jsonPath, dataType, targetDate) {
   return total;
 }
 
+function getLast7Days() {
+  const dates = [];
+  const today = new Date();
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+
+    dates.push(`${year}-${month}-${day}`);
+  }
+
+  return dates.reverse(); // optional, to make it oldest → newest
+}
+
 router.get("/fitness", async (req, res) => {
   try {
-    console.log(
-      getTotalHealthDataForDate(
-        "68a8cf47ed7f637f5dafc1bc",
-        "HealthDataType.STEPS",
-        "2025-08-30"
-      )
+    const users = await User.find({ role: "member" }).select(
+      "_id username isActive"
     );
+    const days = getLast7Days();
+    const details = [
+      "HealthDataType.STEPS",
+      "HealthDataType.WORKOUTS",
+      "HealthDataType.TOTAL_CALORIES_BURNED",
+      "HealthDataType.HEART_RATE",
+      "HealthDataType.BODY_MASS_INDEX",
+      "HealthDataType.BODY_FAT_PERCENTAGE",
+      "HealthDataType.SLEEP_SESSION",
+      "HealthDataType.DISTANCE_DELTA",
+    ];
+    let results = [];
+    for (const u of users) {
+      let userResult = {};
+      for (const d of details) {
+        userResult[d] = {};
+        for (const day of days) {
+          const total = await getTotalHealthDataForDate(u._id, d, day);
+          userResult[d][day] = total;
+        }
+      }
+      results.push(userResult);
+    }
+
+    // after building results array
+    let aggregated = {};
+
+    // loop over each user’s results
+    for (const userResult of results) {
+      for (const detail of details) {
+        if (!aggregated[detail]) aggregated[detail] = {};
+
+        for (const day of days) {
+          if (!aggregated[detail][day]) aggregated[detail][day] = 0;
+
+          aggregated[detail][day] += userResult[detail][day] || 0;
+        }
+      }
+    }
+
     // Response
-    res.json({});
+    res.json({ data: aggregated, users });
+  } catch (err) {
+    console.error("Analytics error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.get("/nutrition", async (req, res) => {
+  try {
+    const count = await User.countDocuments({
+      role: "member",
+      isActive: true,
+    });
+
+    const data = await Nutrition.find({});
+
+    let totalMeals = 0,
+      cal = 0,
+      hydration = 0,
+      macroCompliance = 0;
+
+    data.forEach((e) => {
+      // Count meals (arrays, so count length)
+      totalMeals += e.meals.breakfast.length;
+      totalMeals += e.meals.dinner.length;
+      totalMeals += e.meals.lunch.length;
+      totalMeals += e.meals.snacks.length;
+      totalMeals += e.meals.other.length;
+
+      hydration += e.waterIntake_oz;
+
+      // Track macros
+      let protein = 0,
+        carbs = 0,
+        fats = 0;
+
+      Object.values(e.meals).forEach((mealArr) => {
+        mealArr.forEach((meal) => {
+          if (meal.calories) cal += meal.calories;
+          if (meal.protein_g) protein += meal.protein_g;
+          if (meal.carbs_g) carbs += meal.carbs_g;
+          if (meal.fat_g) fats += meal.fat_g;
+        });
+      });
+
+      // Convert grams → calories
+      const proteinCals = protein * 4;
+      const carbCals = carbs * 4;
+      const fatCals = fats * 9;
+
+      const totalMacroCals = proteinCals + carbCals + fatCals;
+      if (totalMacroCals > 0) {
+        const perc = {
+          protein: (proteinCals / totalMacroCals) * 100,
+          carbs: (carbCals / totalMacroCals) * 100,
+          fats: (fatCals / totalMacroCals) * 100,
+        };
+
+        function compliance(value, [min, max]) {
+          if (value >= min && value <= max) return 100;
+          if (value < min) return (value / min) * 100;
+          if (value > max) return (max / value) * 100;
+        }
+
+        const scores = {
+          protein: compliance(perc.protein, [10, 35]),
+          carbs: compliance(perc.carbs, [45, 65]),
+          fats: compliance(perc.fats, [20, 35]),
+        };
+
+        const avg = (scores.protein + scores.carbs + scores.fats) / 3;
+        macroCompliance += avg;
+      }
+    });
+
+    if (data.length > 0) {
+      macroCompliance = macroCompliance / data.length;
+      hydration = (hydration / data.length / 2000) * 100;
+    }
+
+    // --- Analytics for last 7 days ---
+    const last7days = new Date();
+    last7days.setDate(last7days.getDate() - 7);
+
+    // Calories trend
+    const avgCalories7Days = await Nutrition.aggregate([
+      { $match: { date: { $gte: last7days } } },
+      {
+        $project: {
+          date: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+          calories: {
+            $sum: [
+              { $sum: "$meals.breakfast.calories" },
+              { $sum: "$meals.lunch.calories" },
+              { $sum: "$meals.dinner.calories" },
+              { $sum: "$meals.snacks.calories" },
+              { $sum: "$meals.other.calories" },
+            ],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$date",
+          avgCalories: { $avg: "$calories" },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    // Macros trend
+    const macros7Days = await Nutrition.aggregate([
+      { $match: { date: { $gte: last7days } } },
+      {
+        $project: {
+          date: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+          protein: {
+            $sum: [
+              { $sum: "$meals.breakfast.protein_g" },
+              { $sum: "$meals.lunch.protein_g" },
+              { $sum: "$meals.dinner.protein_g" },
+              { $sum: "$meals.snacks.protein_g" },
+              { $sum: "$meals.other.protein_g" },
+            ],
+          },
+          carbs: {
+            $sum: [
+              { $sum: "$meals.breakfast.carbs_g" },
+              { $sum: "$meals.lunch.carbs_g" },
+              { $sum: "$meals.dinner.carbs_g" },
+              { $sum: "$meals.snacks.carbs_g" },
+              { $sum: "$meals.other.carbs_g" },
+            ],
+          },
+          fats: {
+            $sum: [
+              { $sum: "$meals.breakfast.fat_g" },
+              { $sum: "$meals.lunch.fat_g" },
+              { $sum: "$meals.dinner.fat_g" },
+              { $sum: "$meals.snacks.fat_g" },
+              { $sum: "$meals.other.fat_g" },
+            ],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$date",
+          avgProtein: { $avg: "$protein" },
+          avgCarbs: { $avg: "$carbs" },
+          avgFats: { $avg: "$fats" },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    // Water intake
+    const water7Days = await Nutrition.aggregate([
+      { $match: { date: { $gte: last7days } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+          avgWater_oz: { $avg: "$waterIntake_oz" },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    // Meal counts
+    const mealCounts7Days = await Nutrition.aggregate([
+      { $match: { date: { $gte: last7days } } },
+      {
+        $project: {
+          date: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+          breakfast: { $size: "$meals.breakfast" },
+          lunch: { $size: "$meals.lunch" },
+          dinner: { $size: "$meals.dinner" },
+          snacks: { $size: "$meals.snacks" },
+          other: { $size: "$meals.other" },
+        },
+      },
+      {
+        $group: {
+          _id: "$date",
+          breakfast: { $sum: "$breakfast" },
+          lunch: { $sum: "$lunch" },
+          dinner: { $sum: "$dinner" },
+          snacks: { $sum: "$snacks" },
+          other: { $sum: "$other" },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    // Top users
+    let topUsers = await Nutrition.aggregate([
+      { $match: { date: { $gte: last7days } } },
+      {
+        $project: {
+          user: 1,
+          mealsCount: {
+            $add: [
+              { $size: "$meals.breakfast" },
+              { $size: "$meals.lunch" },
+              { $size: "$meals.dinner" },
+              { $size: "$meals.snacks" },
+              { $size: "$meals.other" },
+            ],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$user",
+          totalMeals: { $sum: "$mealsCount" },
+        },
+      },
+      { $sort: { totalMeals: -1 } },
+      { $limit: 5 },
+    ]);
+    topUsers = await User.populate(topUsers, {
+      path: "_id",
+      select: "username",
+    });
+
+    // Top foods in "other"
+    const topFoods = await Nutrition.aggregate([
+      { $unwind: "$meals.other" },
+      {
+        $group: {
+          _id: "$meals.other.name",
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { count: -1 } },
+      { $limit: 5 },
+      {
+        $project: {
+          _id: 1,
+          percentage: {
+            $concat: [
+              {
+                $toString: {
+                  $round: [{ $multiply: [100, "$count"] }, 0],
+                },
+              },
+              "%",
+            ],
+          },
+        },
+      },
+    ]);
+
+    // Total logged meals
+    const totalMealLogs = await Nutrition.aggregate([
+      {
+        $group: {
+          _id: null,
+          breakfast: { $sum: { $size: "$meals.breakfast" } },
+          lunch: { $sum: { $size: "$meals.lunch" } },
+          dinner: { $sum: { $size: "$meals.dinner" } },
+          snacks: { $sum: { $size: "$meals.snacks" } },
+        },
+      },
+    ]);
+
+    // Response
+    res.json({
+      summary: {
+        meals: totalMeals,
+        active: count,
+        cal,
+        hydration,
+        macro: macroCompliance,
+      },
+      trends: {
+        calories: avgCalories7Days,
+        macros: macros7Days,
+        water: water7Days,
+        mealCounts: mealCounts7Days,
+      },
+      leaderboard: {
+        users: topUsers,
+        foods: topFoods,
+      },
+      totals: totalMealLogs,
+    });
   } catch (err) {
     console.error("Analytics error:", err);
     res.status(500).json({ error: "Server error" });
