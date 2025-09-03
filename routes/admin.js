@@ -18,6 +18,7 @@ const Event = require("../models/events");
 const { Chat, Message } = require("../models/Message");
 const Goal = require("../models/Goal");
 const Nutrition = require("../models/Nutrition");
+const Notifications = require("../models/Notifications");
 
 // All admin routes require admin
 router.use(requireAuth, requireRole("admin"));
@@ -255,6 +256,47 @@ router.get("/dashboard", async (req, res) => {
   }
 });
 
+router.get("/notifications", async (req, res) => {
+  try {
+    const notifications = await Notifications.find({ user: req.user._id })
+      .sort({ createdAt: -1 })
+      .limit(50); // optional: latest 50
+
+    res.json({ success: true, notifications });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.get("/notifications/get", async (req, res) => {
+  try {
+    const notifications = await Notifications.find({
+      user: req.user._id,
+      read: false,
+    })
+      .sort({ createdAt: -1 })
+      .limit(50); // optional: latest 50
+
+    res.json({ success: true, notifications });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Mark notification as read
+router.post("/notifications/read", async (req, res) => {
+  const { id } = req.body;
+  try {
+    await Notifications.findByIdAndUpdate(id, { read: true });
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 /**
  * USER MANAGEMENT (Admin)
  */
@@ -318,7 +360,6 @@ router.post("/users", async (req, res) => {
 router.patch("/users/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    console.log(id, req.body);
 
     // Build update object dynamically (only provided fields)
     const update = {};
@@ -346,6 +387,13 @@ router.patch("/users/:id", async (req, res) => {
       update.passwordHash = await bcrypt.hash(req.body.password, salt);
     }
 
+    const a = await User.findOne({ username: update.username });
+    const b = await User.findOne({ email: update.email });
+
+    if (a || b) {
+      res.json({ error: "Username or email already exists" });
+    }
+
     const user = await User.findByIdAndUpdate(id, update, {
       new: true,
       runValidators: true,
@@ -361,9 +409,65 @@ router.patch("/users/:id", async (req, res) => {
 });
 
 router.delete("/users/:id", async (req, res) => {
-  const { id } = req.params;
-  await User.findByIdAndDelete(id);
-  res.json({ ok: true });
+  try {
+    const { id } = req.params;
+
+    // Update nested arrays
+    const surveys = await Survey.find({});
+    await Promise.all(
+      surveys.map((s) => {
+        s.responses = s.responses?.filter((r) => r.user.toString() !== id);
+        return s.save();
+      })
+    );
+
+    const groups = await Group.find({});
+    await Promise.all(
+      groups.map((g) => {
+        g.members = g.members?.filter((r) => r.toString() !== id);
+        g.joinRequests = g.joinRequests?.filter((r) => r.toString() !== id);
+        return g.save();
+      })
+    );
+
+    const videos = await Video.find({});
+    await Promise.all(
+      videos.map((v) => {
+        v.likes = v.likes?.filter((r) => r.toString() !== id);
+        return v.save();
+      })
+    );
+
+    const user = await User.findById(req.user._id);
+
+    if (user.avatarUrl) {
+      const oldPath = path.join(__dirname, "..", user.avatarUrl);
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    }
+
+    // Delete related docs
+    await Promise.all([
+      Survey.deleteMany({ createdBy: id }),
+      Notifications.deleteMany({ user: id }),
+      Newsletter.deleteMany({ author: id }),
+      Message.deleteMany({ sender: id }),
+      Log.deleteMany({ user: id }),
+      Group.deleteMany({ createdBy: id }),
+      Goal.deleteMany({ user: id }),
+      Event.deleteMany({ author: id }),
+      Nutrition.deleteMany({ user: id }),
+      Competition.deleteMany({ author: id }),
+      Chat.deleteMany({ participants: { $in: [id] } }),
+      Video.deleteMany({ uploader: id }),
+    ]);
+
+    await User.findByIdAndDelete(id);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 /**
@@ -931,18 +1035,40 @@ router.post("/surveys", async (req, res) => {
     dueDate,
     durationMin,
     questions,
+    id,
   } = req.body;
+
   if (!title) return res.status(400).json({ error: "Missing title" });
+  if (id) {
+    const data = await Survey.findById(id);
+    if (data) {
+      // Update fields
+      data.title = title;
+      data.description = description;
+      data.type = type;
+      data.audience = audience;
+      data.dueDate = dueDate ? dueDate : null;
+      data.durationMin = durationMin;
+      data.questions = questions;
+
+      await data.save(); // save the updated document
+
+      return res.status(200).json(data);
+    }
+  }
+
+  // Create new survey if not found
   const survey = await Survey.create({
     title,
     description,
     type,
     audience,
-    dueDate,
+    dueDate: dueDate ? dueDate : null,
     durationMin,
     questions,
     createdBy: req.user._id,
   });
+
   res.status(201).json(survey);
 });
 
@@ -954,9 +1080,23 @@ router.patch("/surveys/:id", async (req, res) => {
   res.json(survey);
 });
 
-router.delete("/surveys/:id", async (req, res) => {
-  await Survey.findByIdAndDelete(req.params.id);
-  res.json({ ok: true });
+router.post("/surveys/delete/:id/:i", async (req, res) => {
+  try {
+    const survey = await Survey.findById(req.params.id);
+    if (!survey) return res.status(404).json({ error: "Survey not found" });
+
+    // Remove the response with the given _id
+    survey.responses = survey.responses.filter(
+      (r) => r._id.toString() !== req.params.i
+    );
+
+    await survey.save();
+
+    res.json({ ok: true, survey });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 router.get("/chats/get", async (req, res) => {
@@ -1371,6 +1511,7 @@ router.get("/fitness", async (req, res) => {
       "HealthDataType.BODY_FAT_PERCENTAGE",
       "HealthDataType.SLEEP_SESSION",
       "HealthDataType.DISTANCE_DELTA",
+      "HealthDataType.WEIGHT",
     ];
     let results = [];
     for (const u of users) {

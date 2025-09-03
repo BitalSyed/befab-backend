@@ -26,19 +26,20 @@ router.use(requireAuth);
  * HOME content feed selections & notifications will be client-driven.
  * Below are concrete feature endpoints.
  */
-router.get('/notifications', async (req, res) => {
+router.get("/notifications", async (req, res) => {
   try {
     if (!req.user || !req.user._id) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const notifications = await Notifications.find({ user: req.user._id })
-      .sort({ createdAt: -1 }); // newest first
+    const notifications = await Notifications.find({ user: req.user._id }).sort(
+      { createdAt: -1 }
+    ); // newest first
 
     res.json(notifications);
   } catch (err) {
-    console.error('Error fetching notifications:', err);
-    res.status(500).json({ error: 'Server error' });
+    console.error("Error fetching notifications:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
@@ -57,7 +58,7 @@ router.get("/get", async (req, res) => {
   //   `${user.firstName} Logged-in as Admin`
   // );
 
-  console.log(u)
+  console.log(u);
 
   return res.json(u);
 });
@@ -118,9 +119,10 @@ router.post("/updateProfile", upload1.single("avatar"), async (req, res) => {
 router.post("/firstName", async (req, res) => {
   try {
     const { firstname } = req.body;
-    console.log('a')
-    if (!firstname) return res.status(400).json({ error: "firstName is required" });
-    console.log('b')
+    console.log("a");
+    if (!firstname)
+      return res.status(400).json({ error: "firstName is required" });
+    console.log("b");
     const user = await User.findOne({ email: req.user.email });
     if (!user) return res.status(401).json({ error: "User not found" });
 
@@ -138,7 +140,8 @@ router.post("/firstName", async (req, res) => {
 router.post("/lastName", async (req, res) => {
   try {
     const { lastname } = req.body;
-    if (!lastname) return res.status(400).json({ error: "lastName is required" });
+    if (!lastname)
+      return res.status(400).json({ error: "lastName is required" });
 
     const user = await User.findOne({ email: req.user.email });
     if (!user) return res.status(401).json({ error: "User not found" });
@@ -157,7 +160,8 @@ router.post("/lastName", async (req, res) => {
 router.post("/username", async (req, res) => {
   try {
     const { username } = req.body;
-    if (!username) return res.status(400).json({ error: "username is required" });
+    if (!username)
+      return res.status(400).json({ error: "username is required" });
 
     const user = await User.findOne({ email: req.user.email });
     if (!user) return res.status(401).json({ error: "User not found" });
@@ -178,13 +182,12 @@ router.post("/username", async (req, res) => {
   }
 });
 
-
 // Update Email
 router.post("/email", async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: "email is required" });
-    
+
     const user = await User.findOne({ email: email });
     if (user) return res.status(401).json({ error: "Email already exists" });
 
@@ -203,13 +206,16 @@ router.post("/password", async (req, res) => {
   try {
     const { oldPassword, newPassword } = req.body;
     if (!oldPassword || !newPassword)
-      return res.status(400).json({ error: "Both oldPassword and newPassword are required" });
+      return res
+        .status(400)
+        .json({ error: "Both oldPassword and newPassword are required" });
 
     const user = await User.findOne({ email: req.user.email });
     if (!user) return res.status(401).json({ error: "User not found" });
 
     const isMatch = await bcrypt.compare(oldPassword, user.passwordHash);
-    if (!isMatch) return res.status(400).json({ error: "Old password is incorrect" });
+    if (!isMatch)
+      return res.status(400).json({ error: "Old password is incorrect" });
 
     const hashed = await bcrypt.hash(newPassword, 10);
     user.passwordHash = hashed;
@@ -225,25 +231,65 @@ router.post("/password", async (req, res) => {
 // Delete Account
 router.post("/deleteAccount", async (req, res) => {
   try {
-    const user = await User.findOne({ email: req.user.email });
-    if (!user) return res.status(401).json({ error: "User not found" });
+    const { id } = req.params;
 
-    // Delete avatar file if exists
+    // Update nested arrays
+    const surveys = await Survey.find({});
+    await Promise.all(
+      surveys.map((s) => {
+        s.responses = s.responses?.filter((r) => r.user.toString() !== id);
+        return s.save();
+      })
+    );
+
+    const groups = await Group.find({});
+    await Promise.all(
+      groups.map((g) => {
+        g.members = g.members?.filter((r) => r.toString() !== id);
+        g.joinRequests = g.joinRequests?.filter((r) => r.toString() !== id);
+        return g.save();
+      })
+    );
+
+    const videos = await Video.find({});
+    await Promise.all(
+      videos.map((v) => {
+        v.likes = v.likes?.filter((r) => r.toString() !== id);
+        return v.save();
+      })
+    );
+
+    const user = await User.findById(req.user._id);
+
     if (user.avatarUrl) {
       const oldPath = path.join(__dirname, "..", user.avatarUrl);
       if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
     }
 
-    await User.deleteOne({ email: req.user.email });
+    // Delete related docs
+    await Promise.all([
+      Survey.deleteMany({ createdBy: id }),
+      Notifications.deleteMany({ user: id }),
+      Newsletter.deleteMany({ author: id }),
+      Message.deleteMany({ sender: id }),
+      Log.deleteMany({ user: id }),
+      Group.deleteMany({ createdBy: id }),
+      Goal.deleteMany({ user: id }),
+      Event.deleteMany({ author: id }),
+      Nutrition.deleteMany({ user: id }),
+      Competition.deleteMany({ author: id }),
+      Chat.deleteMany({ participants: { $in: [id] } }),
+      Video.deleteMany({ uploader: id }),
+    ]);
 
-    return res.json({ message: "Account deleted successfully" });
+    await User.findByIdAndDelete(id);
+
+    res.json({ ok: true });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Server error" });
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
-
-
 
 router.get("/users", async (req, res) => {
   try {
@@ -797,9 +843,7 @@ router.get("/competitions/get", async (req, res) => {
         );
 
         const rank =
-          sorted.findIndex(
-            (p) => getUserId(p) === req.user._id.toString()
-          ) + 1;
+          sorted.findIndex((p) => getUserId(p) === req.user._id.toString()) + 1;
 
         // ✅ Win = rank 1 when competition completed
         if (comp.status === "completed" && rank === 1) {
@@ -807,7 +851,9 @@ router.get("/competitions/get", async (req, res) => {
         }
 
         // ✅ For active competitions, normalize progress against leader
-        if (!['draft', 'upcoming', 'completed', 'paused'].includes(comp.status)) {
+        if (
+          !["draft", "upcoming", "completed", "paused"].includes(comp.status)
+        ) {
           const leader = sorted[0];
           const leaderProgress = leader?.progress || 1; // avoid div/0
           const pct = ((participant.progress || 0) / leaderProgress) * 100;
@@ -820,7 +866,8 @@ router.get("/competitions/get", async (req, res) => {
       }
     }
 
-    const avgProgress = progressCount > 0 ? totalProgressPct / progressCount : 0;
+    const avgProgress =
+      progressCount > 0 ? totalProgressPct / progressCount : 0;
     const avgRank = rankCount > 0 ? rankSum / rankCount : null;
 
     res.json({
@@ -1197,18 +1244,19 @@ router.get("/surveys", async (req, res) => {
     const userId = req.user._id;
 
     const startOfToday = new Date();
-startOfToday.setHours(0, 0, 0, 0);
+    startOfToday.setHours(0, 0, 0, 0);
 
-const list = await Survey.find({
-  "responses.user": { $ne: userId },
-  $or: [
-    { dueDate: { $gte: startOfToday } }, // today or later
-    { dueDate: null },                   // explicitly null
-    { dueDate: { $exists: false } }      // missing
-  ]
-})
-  .select("-responses")
-  .sort({ createdAt: -1 });
+    const list = await Survey.find({
+      "responses.user": { $ne: userId },
+      exclude: { $ne: req.user.username }, // exclude if username is in exclude array
+      $or: [
+        { dueDate: { $gte: startOfToday } }, // today or later
+        { dueDate: null }, // explicitly null
+        { dueDate: { $exists: false } }, // missing
+      ],
+    })
+      .select("-responses")
+      .sort({ createdAt: -1 });
 
     res.json(list);
   } catch (err) {

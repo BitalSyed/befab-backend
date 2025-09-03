@@ -9,7 +9,6 @@ const UserSchema = new mongoose.Schema(
     username: {
       type: String,
       trim: true,
-      unique: true,
       match: /^[a-zA-Z0-9_.-]+@befab$/i, // “username@Befab” format from spec
     }, // :contentReference[oaicite:0]{index=0}
     userId: {

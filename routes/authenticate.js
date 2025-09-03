@@ -100,6 +100,20 @@ app.post("/signup", async (req, res) => {
   const { firstName, lastName, username, email, password, code, userId } = req.body;
   const tfa = req.body.tfa;
 
+  // Collect missing required fields
+  const missingFields = [];
+
+  if (!firstName) missingFields.push("firstName");
+  if (!lastName) missingFields.push("lastName");
+  if (!username) missingFields.push("userName");
+  if (!email) missingFields.push("emailAddress");
+  if (!password) missingFields.push("password");
+  if (!userId) missingFields.push("userId");
+
+  if (missingFields.length > 0) {
+    return res.status(400).send("Missing required fields");
+  }
+
   // Check if user with verified OTP exists
   const tfaUser = await user.findOne({
     otp: code,
@@ -118,7 +132,7 @@ app.post("/signup", async (req, res) => {
   });
 
   const nameUser1 = await user.findOne({
-    userName: username.toLowerCase()+'@befab',
+    userId: userId,
   });
 
   if (nameUser) {
@@ -127,20 +141,6 @@ app.post("/signup", async (req, res) => {
 
   if (nameUser1) {
     return res.status(403).send("userId Already Exists");
-  }
-
-  // Collect missing required fields
-  const missingFields = [];
-
-  if (!firstName) missingFields.push("firstName");
-  if (!lastName) missingFields.push("lastName");
-  if (!username) missingFields.push("userName");
-  if (!email) missingFields.push("emailAddress");
-  if (!password) missingFields.push("password");
-  if (!userId) missingFields.push("userId");
-
-  if (missingFields.length > 0) {
-    return res.status(400).send("Missing required fields");
   }
 
   tfaUser.firstName = firstName;
