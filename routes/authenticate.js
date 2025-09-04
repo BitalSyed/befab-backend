@@ -128,7 +128,7 @@ app.post("/signup", async (req, res) => {
   }
 
   const nameUser = await user.findOne({
-    userName: username.toLowerCase()+'@befab',
+    username: username.toLowerCase()+'@befab',
   });
 
   const nameUser1 = await user.findOne({

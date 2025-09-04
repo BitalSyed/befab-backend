@@ -472,8 +472,9 @@ router.post(
   ]),
   async (req, res) => {
     try {
+      console.log('posted')
       const { title, caption, category, durationSec, type } = req.body;
-
+      
       if (!title || !caption || !req.files?.url) {
         return res.status(400).json({ error: "Missing fields" });
       }
@@ -505,6 +506,15 @@ router.post(
         durationSec,
         type,
         status: "published",
+      });
+
+
+      const list = User.find({ role: "admin" });
+      list.map(async (e) => {
+        await notify(
+          `${req.user.username} Posted a new video`,
+          e._id.toString()
+        );
       });
 
       res.status(201).json(v);
@@ -634,10 +644,24 @@ router.post("/groups/:id/join", async (req, res) => {
     if (!g.joinRequests.some((r) => r.toString() === req.user._id.toString()))
       g.joinRequests.push(req.user._id);
     await g.save();
+    const list = User.find({ role: "admin" });
+    list.map(async (e) => {
+      await notify(
+        `${req.user.username} Requested to join the Group - "${g.name}"`,
+        e._id.toString()
+      );
+    });
     return res.json({ requested: true }); // admin must approve per spec :contentReference[oaicite:28]{index=28}
   } else {
     g.members.push(req.user._id);
     await g.save();
+    const list = User.find({ role: "admin" });
+    list.map(async (e) => {
+      await notify(
+        `${req.user.username} Joined the Group - "${g.name}"`,
+        e._id.toString()
+      );
+    });
     return res.json({ joined: true });
   }
 });
@@ -1248,11 +1272,11 @@ router.get("/surveys", async (req, res) => {
 
     const list = await Survey.find({
       "responses.user": { $ne: userId },
-      exclude: { $ne: req.user.username }, // exclude if username is in exclude array
+      exclude: { $ne: req.user.username }, // user not excluded
       $or: [
-        { dueDate: { $gte: startOfToday } }, // today or later
-        { dueDate: null }, // explicitly null
-        { dueDate: { $exists: false } }, // missing
+        { dueDate: { $gte: startOfToday } }, // due today or later
+        { dueDate: null }, // no due date set
+        { dueDate: { $exists: false } }, // due date missing
       ],
     })
       .select("-responses")
@@ -1332,11 +1356,27 @@ router.post("/surveys/:id/response", async (req, res) => {
     s.responses.push({ user: req.user._id, answers });
     await s.save();
 
+    const list = User.find({ role: "admin" });
+    list.map(async (e) => {
+      await notify(
+        `A member completed the survey: "${s.title}"`,
+        e._id.toString()
+      );
+    });
+
     res.status(200).json({ ok: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 });
+
+async function notify(msg, user) {
+  const notification = new Notifications({
+    user: user,
+    content: msg,
+  });
+  notification.save();
+}
 
 module.exports = router;

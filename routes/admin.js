@@ -884,6 +884,15 @@ router.post("/competitions", async (req, res) => {
     author: req.user._id,
     type: type,
   });
+
+  const list = User.find({ role: "member" });
+    list.map(async (e) => {
+      await notify(
+        `Don't miss the new competition "${title}" — join now!`,
+        e._id.toString()
+      );
+    });
+    
   res.status(201).json(c);
 });
 
@@ -938,6 +947,14 @@ router.post("/events", async (req, res) => {
       author: req.user._id,
     });
 
+    const list = User.find({ role: "member" });
+    list.map(async (e) => {
+      await notify(
+        `Don’t miss the upcoming event ${title} in your calendar`,
+        e._id.toString()
+      );
+    });
+
     // Save to database
     await newEvent.save();
 
@@ -982,6 +999,18 @@ router.get("/surveys", async (_req, res) => {
   res.json(list);
 });
 
+router.post("/notify", async (req, res) => {
+  const { usernames, message } = req.body;
+  const list = await User.find({});
+  list.map(async (e) => {
+    console.log(usernames.includes(e.username), e.username, e._id.toString());
+    if (usernames.includes(e.username)) {
+      await notify(message, e._id.toString());
+    }
+  });
+  res.json({ message: "Notifications Sent" });
+});
+
 router.get("/surveys/:id", async (req, res) => {
   const list = await Survey.findOne({ _id: req.params.id })
     .sort({ createdAt: -1 })
@@ -1001,7 +1030,10 @@ router.post("/surveys/:id/response", async (req, res) => {
     const Survey = require("../models/Survey");
     const { answers } = req.body;
 
-    const s = await Survey.findById(req.params.id);
+    const s = await Survey.findOne({
+      _id: req.params.id,
+      excludedUsers: { $ne: req.user.username },
+    });
     if (!s) return res.status(404).json({ error: "Not found" });
 
     // ✅ check if user already responded
@@ -1036,6 +1068,7 @@ router.post("/surveys", async (req, res) => {
     durationMin,
     questions,
     id,
+    excludedUsers,
   } = req.body;
 
   if (!title) return res.status(400).json({ error: "Missing title" });
@@ -1067,6 +1100,7 @@ router.post("/surveys", async (req, res) => {
     durationMin,
     questions,
     createdBy: req.user._id,
+    exclude: excludedUsers,
   });
 
   res.status(201).json(survey);
@@ -1076,6 +1110,12 @@ router.patch("/surveys/:id", async (req, res) => {
   const survey = await Survey.findByIdAndUpdate(req.params.id, req.body, {
     new: true,
   });
+  if (!survey) return res.status(404).json({ error: "Not found" });
+  res.json(survey);
+});
+
+router.delete("/surveys/:id", async (req, res) => {
+  const survey = await Survey.findByIdAndDelete(req.params.id);
   if (!survey) return res.status(404).json({ error: "Not found" });
   res.json(survey);
 });
@@ -1098,6 +1138,14 @@ router.post("/surveys/delete/:id/:i", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
+async function notify(msg, user) {
+  const notification = new Notifications({
+    user: user,
+    content: msg,
+  });
+  notification.save();
+}
 
 router.get("/chats/get", async (req, res) => {
   const chats = await Chat.find({})
