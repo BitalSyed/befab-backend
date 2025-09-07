@@ -13,6 +13,7 @@ const mongoose = require("mongoose");
 // const session = require("express-session");
 const user = require("../models/User.js");
 const Log = require("../models/logs.js");
+const User = require("../models/User.js");
 // const samlStrategy = require("./samlStrategy.js");
 
 const Email = process.env.EMAIL;
@@ -397,8 +398,7 @@ app.post("/verify-forgot-password", async (req, res) => {
 
       const sent = await email(
         otp,
-        existingUser.email,
-        `${process.env.URL}/reset-password?otp=${encodeURIComponent(otp)}`
+        existingUser.email
       );
 
       if (sent) {
@@ -415,31 +415,63 @@ app.post("/verify-forgot-password", async (req, res) => {
 
 app.get("/reset-password", async (req, res) => {
   try {
-    const input = req.query.otp;
+    const { otp } = req.query;
 
-    const query = { otp: input };
-    let existingUser = await user.findOne(query);
-
-    if (existingUser) {
-      // Update OTP and expiry
-      existingUser.otp = otp;
-      existingUser.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
-      await existingUser.save();
-
-      const sent = await email(
-        otp,
-        existingUser.email,
-        `${process.env.URL}/reset-password?otp=${encodeURIComponent(otp)}`
-      );
-
-      if (sent) {
-        return res.status(200).json({ message: "Verification Code Sent" });
-      } else {
-        throw Error(`Error Sending Email`);
-      }
+    if (!otp) {
+      return res.status(400).send("OTP is required.");
     }
+
+    const user = await User.findOne({
+      otp,
+      otpExpiresAt: { $gt: new Date() } // check not expired
+    });
+
+    if (!user) {
+      return res.status(400).send("Invalid or expired OTP.");
+    }
+
+    // Serve reset password form
+    res.json({});
   } catch (err) {
-    console.error("OTP verification failed:", err);
+    console.error("Error loading reset form:", err);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+// Handle form submission
+app.post("/reset-password", async (req, res) => {
+  try {
+    const { otp, password, confirmPassword } = req.body;
+
+    if (!otp || !password || !confirmPassword) {
+      return res.status(400).send("All fields are required.");
+    }
+    if (password !== confirmPassword) {
+      return res.status(400).send("Passwords do not match.");
+    }
+
+    const user = await User.findOne({
+      otp,
+      otpExpiresAt: { $gt: new Date() }
+    });
+
+    if (!user) {
+      return res.status(400).send("Invalid or expired OTP.");
+    }
+
+    // Hash new password
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    user.passwordHash = hashedPassword;
+    user.otp = null;
+    user.otpExpiresAt = null;
+
+    await user.save();
+
+    res.json("✅ Password reset successful. You may now log in.");
+  } catch (err) {
+    console.error("Password reset failed:", err);
     res.status(500).send("Internal Server Error");
   }
 });

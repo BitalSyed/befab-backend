@@ -18,6 +18,9 @@ const Event = require("../models/events");
 const User = require("../models/User");
 const Food = require("../models/foods");
 const Notifications = require("../models/Notifications");
+const Survey = require("../models/Survey");
+const Log = require("../models/logs");
+const Nutrition = require("../models/Nutrition");
 
 // All app (user-facing) routes require auth
 router.use(requireAuth);
@@ -231,7 +234,7 @@ router.post("/password", async (req, res) => {
 // Delete Account
 router.post("/deleteAccount", async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = req.user._id.toString();
 
     // Update nested arrays
     const surveys = await Survey.find({});
@@ -247,6 +250,15 @@ router.post("/deleteAccount", async (req, res) => {
       groups.map((g) => {
         g.members = g.members?.filter((r) => r.toString() !== id);
         g.joinRequests = g.joinRequests?.filter((r) => r.toString() !== id);
+        return g.save();
+      })
+    );
+
+    const competitions = await Competition.find({});
+    await Promise.all(
+      competitions.map((g) => {
+        g.participants = g.participants?.filter((r) => r.user.toString() !== id);
+        g.leaderboard = g.leaderboard?.filter((r) => r.user.toString() !== id);
         return g.save();
       })
     );

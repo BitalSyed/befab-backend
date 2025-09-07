@@ -885,14 +885,14 @@ router.post("/competitions", async (req, res) => {
     type: type,
   });
 
-  const list = User.find({ role: "member" });
-    list.map(async (e) => {
-      await notify(
-        `Don't miss the new competition "${title}" — join now!`,
-        e._id.toString()
-      );
-    });
-    
+  const list = await User.find({ role: "member" });
+  list.map(async (e) => {
+    await notify(
+      `Don't miss the new competition "${title}" — join now!`,
+      e._id.toString()
+    );
+  });
+
   res.status(201).json(c);
 });
 
@@ -1234,7 +1234,8 @@ router.get("/goals/current", async (req, res) => {
 
 router.post("/goals", async (req, res) => {
   try {
-    const { name, durationDays, milestones, category, user } = req.body;
+    const { name, durationDays, milestones, category, user, creator } =
+      req.body;
     if (!name || !durationDays || !milestones || !category || !user) {
       return res.status(400).json({ error: "Missing required fields" });
     }
@@ -1243,7 +1244,7 @@ router.post("/goals", async (req, res) => {
     const lastGoal = await Goal.findOne({
       user: req.user._id,
       category: category,
-      status: { $in: ["expiired", "completed"] },
+      status: { $in: ["expired", "completed"] },
     }).sort({ createdAt: -1 });
 
     const un = await User.findOne({ username: user });
@@ -1257,7 +1258,7 @@ router.post("/goals", async (req, res) => {
       category,
       durationDays,
       milestones,
-      creator: "Admin",
+      creator: creator ?? "Admin",
     });
 
     res.status(201).json(goal);
@@ -1525,6 +1526,55 @@ function getTotalHealthDataForDate(jsonPath, dataType, targetDate) {
 
   return total;
 }
+
+router.get("/goals/ai", async (req, res) => {
+  try {
+    const users = await User.find({ role: "member" }).select(
+      "_id username isActive"
+    );
+
+    // Pick max 4 random users
+    const shuffled = users.sort(() => 0.5 - Math.random());
+    const picked = shuffled.slice(0, 4);
+
+    // Build AI data for each user
+    const k = await Promise.all(
+      picked.map(async (e) => {
+        const n = await Nutrition.findOne({ user: e._id });
+
+        let cal = 0;
+        if (n?.meals?.length) {
+          n.meals.forEach((meal) => {
+            meal.forEach((item) => {
+              cal += item.calories || 0;
+            });
+          });
+        }
+
+        return {
+          steps: await getTotalHealthDataForDate(
+            e._id,
+            "HealthDataType.STEPS",
+            new Date()
+          ),
+          caloriesBurned: await getTotalHealthDataForDate(
+            e._id,
+            "HealthDataType.TOTAL_CALORIES_BURNED",
+            new Date()
+          ),
+          caloriesTaken: cal,
+          water: n?.waterIntake_oz || 0,
+          user: e.username,
+        };
+      })
+    );
+
+    res.json({ data: k });
+  } catch (err) {
+    console.error("Analytics error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
 function getLast7Days() {
   const dates = [];
