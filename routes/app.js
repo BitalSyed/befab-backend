@@ -46,6 +46,31 @@ router.get("/notifications", async (req, res) => {
   }
 });
 
+router.get("/notifications/read", async (req, res) => {
+  try {
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    console.log('read')
+
+    // Mark all unread notifications as read
+    const result = await Notifications.updateMany(
+      { user: req.user._id, read: false },
+      { $set: { read: true } }
+    );
+
+    res.json({
+      success: true,
+      message: "Notifications marked as read",
+      modifiedCount: result.modifiedCount,
+    });
+  } catch (err) {
+    console.error("Error marking notifications as read:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 router.get("/get", async (req, res) => {
   const email = req.user.email;
 
@@ -257,7 +282,9 @@ router.post("/deleteAccount", async (req, res) => {
     const competitions = await Competition.find({});
     await Promise.all(
       competitions.map((g) => {
-        g.participants = g.participants?.filter((r) => r.user.toString() !== id);
+        g.participants = g.participants?.filter(
+          (r) => r.user.toString() !== id
+        );
         g.leaderboard = g.leaderboard?.filter((r) => r.user.toString() !== id);
         return g.save();
       })
@@ -484,9 +511,9 @@ router.post(
   ]),
   async (req, res) => {
     try {
-      console.log('posted')
+      console.log("posted");
       const { title, caption, category, durationSec, type } = req.body;
-      
+
       if (!title || !caption || !req.files?.url) {
         return res.status(400).json({ error: "Missing fields" });
       }
@@ -519,7 +546,6 @@ router.post(
         type,
         status: "published",
       });
-
 
       const list = User.find({ role: "admin" });
       list.map(async (e) => {
