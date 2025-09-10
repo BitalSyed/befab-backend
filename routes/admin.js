@@ -340,8 +340,8 @@ router.get("/users/activity", async (req, res) => {
 });
 
 router.post("/users", async (req, res) => {
-  const { firstName, lastName, username, email, passwordHash, role } = req.body;
-  if (!firstName || !lastName || !username || !email || !passwordHash) {
+  const { firstName, lastName, username, userId, email, passwordHash, role } = req.body;
+  if (!firstName || !lastName || !username || !userId || !email || !passwordHash) {
     return res.status(400).json({ error: "Missing required fields" });
   }
   const exists = await User.findOne({ $or: [{ email }, { username }] });
@@ -351,6 +351,7 @@ router.post("/users", async (req, res) => {
     firstName,
     lastName,
     username,
+    userId,
     email,
     passwordHash: bcrypt.hashSync(passwordHash, 10), // hash password,
     role: role || "member",
