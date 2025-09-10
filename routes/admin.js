@@ -19,6 +19,7 @@ const { Chat, Message } = require("../models/Message");
 const Goal = require("../models/Goal");
 const Nutrition = require("../models/Nutrition");
 const Notifications = require("../models/Notifications");
+const Food = require("../models/foods");
 
 // All admin routes require admin
 router.use(requireAuth, requireRole("admin"));
@@ -1262,6 +1263,27 @@ router.post("/goals", async (req, res) => {
     });
 
     res.status(201).json(goal);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.post("/food", async (req, res) => {
+  try {
+    const { name, calories, category } =
+      req.body;
+    if (!name || !calories || !category) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const goal = await Food.create({
+      name,
+      category,
+      calories,
+    });
+
+    res.status(201).json({message: 'Food Logged Successfully'});
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
