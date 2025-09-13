@@ -171,6 +171,7 @@ router.get("/dashboard", async (req, res) => {
     // --- Basic counts ---
     const [
       totalUsers,
+      members,
       activeUsers,
       newsletters,
       videos,
@@ -182,6 +183,7 @@ router.get("/dashboard", async (req, res) => {
       allSurveys,
     ] = await Promise.all([
       User.countDocuments(),
+      User.countDocuments({ role: "member" }),
       User.countDocuments({ isActive: true }),
       Newsletter.countDocuments(),
       Video.countDocuments(),
@@ -238,6 +240,7 @@ router.get("/dashboard", async (req, res) => {
     res.json({
       users: {
         total: totalUsers,
+        members: members,
         active: activeUsers,
         retentionRate: parseFloat(retentionRate.toFixed(2)), // %
       },
@@ -340,8 +343,16 @@ router.get("/users/activity", async (req, res) => {
 });
 
 router.post("/users", async (req, res) => {
-  const { firstName, lastName, username, userId, email, passwordHash, role } = req.body;
-  if (!firstName || !lastName || !username || !userId || !email || !passwordHash) {
+  const { firstName, lastName, username, userId, email, passwordHash, role } =
+    req.body;
+  if (
+    !firstName ||
+    !lastName ||
+    !username ||
+    !userId ||
+    !email ||
+    !passwordHash
+  ) {
     return res.status(400).json({ error: "Missing required fields" });
   }
   const exists = await User.findOne({ $or: [{ email }, { username }] });
@@ -369,6 +380,7 @@ router.patch("/users/:id", async (req, res) => {
       "firstName",
       "lastName",
       "username",
+      "userId",
       "email",
       "role",
       "isActive",
@@ -378,10 +390,12 @@ router.patch("/users/:id", async (req, res) => {
     ];
 
     allowedFields.forEach((field) => {
-      if (req.body[field] !== undefined) {
-        update[field] = req.body[field];
+      if (req.body[field] !== undefined && req.body[field] !== "") {
+        if (req.body.username != "@befab") update[field] = req.body[field];
       }
     });
+
+    console.log(update);
 
     // Handle password separately
     if (req.body.password) {
@@ -391,8 +405,12 @@ router.patch("/users/:id", async (req, res) => {
 
     const a = await User.findOne({ username: update.username });
     const b = await User.findOne({ email: update.email });
+    const c = await User.findOne({ userId: update.userId });
 
-    if (a || b) {
+    if (c && (c ? c._id != id : false))
+      res.json({ error: "Record ID already exists" });
+
+    if ((a || b) && (a ? a._id != id : false || b ? b._id != id : false)) {
       res.json({ error: "Username or email already exists" });
     }
 
@@ -1272,8 +1290,7 @@ router.post("/goals", async (req, res) => {
 
 router.post("/food", async (req, res) => {
   try {
-    const { name, calories, category } =
-      req.body;
+    const { name, calories, category } = req.body;
     if (!name || !calories || !category) {
       return res.status(400).json({ error: "Missing required fields" });
     }
@@ -1284,7 +1301,7 @@ router.post("/food", async (req, res) => {
       calories,
     });
 
-    res.status(201).json({message: 'Food Logged Successfully'});
+    res.status(201).json({ message: "Food Logged Successfully" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
@@ -1663,6 +1680,8 @@ router.get("/fitness", async (req, res) => {
       }
     }
 
+    // console.log(aggregated)
+
     // Response
     res.json({ data: aggregated, users });
   } catch (err) {
@@ -1677,8 +1696,28 @@ router.get("/nutrition", async (req, res) => {
       role: "member",
       isActive: true,
     });
+    const users = await User.countDocuments({ role: "member" });
 
-    const data = await Nutrition.find({});
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1); // 1st of this month
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const startOfNextMonth = new Date(startOfMonth);
+    startOfNextMonth.setMonth(startOfNextMonth.getMonth() + 1);
+
+    const data = await Nutrition.find({
+      date: {
+        $gte: startOfMonth,
+        $lt: startOfNextMonth,
+      },
+    });
+
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth(); // 0 = Jan, 1 = Feb ...
+
+    // Create a date for the 0th day of next month → last day of current month
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
 
     let totalMeals = 0,
       cal = 0,
@@ -1739,7 +1778,10 @@ router.get("/nutrition", async (req, res) => {
       }
     });
 
+    console.log(daysInMonth);
+
     if (data.length > 0) {
+      cal = cal / (users * daysInMonth);
       macroCompliance = macroCompliance / data.length;
       hydration = (hydration / data.length / 2000) * 100;
     }
@@ -1898,16 +1940,28 @@ router.get("/nutrition", async (req, res) => {
           count: { $sum: 1 },
         },
       },
-      { $sort: { count: -1 } },
-      { $limit: 5 },
+      {
+        $group: {
+          _id: null,
+          foods: { $push: { name: "$_id", count: "$count" } },
+          total: { $sum: "$count" },
+        },
+      },
+      { $unwind: "$foods" },
       {
         $project: {
-          _id: 1,
+          _id: "$foods.name",
+          count: "$foods.count",
           percentage: {
             $concat: [
               {
                 $toString: {
-                  $round: [{ $multiply: [100, "$count"] }, 0],
+                  $round: [
+                    {
+                      $multiply: [{ $divide: ["$foods.count", "$total"] }, 100],
+                    },
+                    0,
+                  ],
                 },
               },
               "%",
@@ -1915,6 +1969,8 @@ router.get("/nutrition", async (req, res) => {
           },
         },
       },
+      { $sort: { count: -1 } },
+      { $limit: 5 },
     ]);
 
     // Total logged meals
